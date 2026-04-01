@@ -1,27 +1,27 @@
 # Build stage
-FROM gradle:8.13-jdk17 AS build
+FROM --platform=linux/amd64 gradle:8.13-jdk17 AS build
 WORKDIR /app
 
-# Copy Gradle wrapper and config
-COPY gradlew gradlew
-COPY gradle/ gradle/
-COPY build.gradle.kts build.gradle.kts
+# Copy Gradle wrapper and version catalog
+COPY gradle/wrapper/ gradle/wrapper/
 COPY gradle/libs.versions.toml gradle/libs.versions.toml
+COPY gradlew gradlew
+RUN chmod +x gradlew
 
-# Create a minimal settings.gradle.kts for Docker (only backend-server)
-RUN echo 'pluginManagement { repositories { mavenCentral(); gradlePluginPortal() } }\n\
-dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { mavenCentral() } }\n\
-rootProject.name = "cashapp-backend"\n\
-include(":backend-server")' > settings.gradle.kts
+# Use Docker-specific settings (no Android modules)
+COPY docker-settings.gradle.kts settings.gradle.kts
 
-# Copy backend source
+# Minimal root build file (no Android plugin references)
+RUN echo 'plugins { }' > build.gradle.kts
+
+# Copy backend module
 COPY backend-server/ backend-server/
 
 # Build fat JAR
-RUN gradle :backend-server:buildFatJar --no-daemon
+RUN ./gradlew :backend-server:buildFatJar --no-daemon
 
-# Run stage — minimal JRE image
-FROM eclipse-temurin:17-jre-alpine
+# Run stage
+FROM --platform=linux/amd64 eclipse-temurin:17-jre-jammy
 WORKDIR /app
 COPY --from=build /app/backend-server/build/libs/backend-server-all.jar app.jar
 
