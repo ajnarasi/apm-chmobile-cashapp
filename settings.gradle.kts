@@ -41,4 +41,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "Fiserv Mobile Payments Sample"
 include(":app")
+include(":payment-sdk-shim")
+include(":cashapppay-bridge")
+include(":merchant-app")
+include(":backend-server")
  

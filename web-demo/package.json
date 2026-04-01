@@ -1,0 +1,13 @@
+{
+  "name": "cashapp-web-demo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --port 5180",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

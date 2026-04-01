@@ -13,3 +13,15 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Node
+node_modules/
+web-demo/node_modules/
+
+# Build outputs
+*/build/
+backend-server/build/
+
+# Claude Code
+.claude/plans/
+.claude/settings.local.json
