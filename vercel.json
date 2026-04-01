@@ -1,0 +1,12 @@
+{
+  "buildCommand": "cd web-demo && npm install && npm run build",
+  "outputDirectory": "web-demo/dist",
+  "installCommand": "cd web-demo && npm install",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://apm-chmobile-cashapp-backend.onrender.com/api/:path*"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: apm-chmobile-cashapp-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: CASHAPP_CLIENT_ID
+        value: CAS-CI_FISERV_TEST
+      - key: CASHAPP_API_KEY
+        value: KEY_ksbja4hqrgtahqmw6nn5gyv1b
+      - key: PORT
+        value: "8080"
