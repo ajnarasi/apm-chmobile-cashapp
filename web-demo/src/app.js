@@ -131,6 +131,9 @@ function render() {
   if (state.paymentState === 'gpay-confirm') {
     el.innerHTML += renderGooglePayOverlay();
   }
+  if (state.paymentState === 'klarna-select') {
+    el.innerHTML += renderKlarnaOverlay();
+  }
   attachEvents();
 }
 
@@ -159,6 +162,7 @@ function renderCatalog() {
                 <span class="product-price">${formatCents(p.priceInCents)}</span>
                 <button class="btn-add" data-add="${p.id}">Add</button>
               </div>
+              <div class="klarna-promo">or 4 x ${formatCents(Math.ceil(p.priceInCents / 4))} with <strong>Klarna</strong></div>
             </div>
           </div>`;
         }).join('')}
@@ -254,6 +258,7 @@ function renderCheckout() {
 
         <button class="btn-outline" data-pay-card>\uD83D\uDCB3 &nbsp;Credit / Debit Card</button>
         <button class="btn-outline" data-pay-gpay style="margin-top: 8px;">G Pay &nbsp;Google Pay</button>
+        <button class="btn-outline btn-klarna-accent" data-pay-klarna style="margin-top: 8px;">\uD83D\uDECD\uFE0F &nbsp;Klarna \u00B7 Pay in 4 / Pay Later</button>
 
         <div class="checkout-footer">All payment methods powered by Fiserv CommerceHub</div>
       </div>
@@ -358,6 +363,51 @@ function renderGooglePayOverlay() {
     </div>`;
 }
 
+// ---- Klarna Selection Overlay ----
+function renderKlarnaOverlay() {
+  const installment = formatCents(Math.ceil(totalCents() / 4));
+  return `
+    <div class="cashapp-overlay">
+      <div class="klarna-modal">
+        <div class="klarna-header">
+          <span class="klarna-logo-text">Klarna.</span>
+          <button class="card-modal-close" data-klarna-cancel>&times;</button>
+        </div>
+        <div class="klarna-body">
+          <div class="klarna-amount">${formatCents(totalCents())}</div>
+          <div class="klarna-merchant">CommerceHub Demo Store</div>
+
+          <div class="klarna-types">
+            <label class="klarna-type-option">
+              <input type="radio" name="klarna-type" value="pay_over_time" checked />
+              <div class="klarna-type-card active">
+                <div class="klarna-type-title">Pay in 4</div>
+                <div class="klarna-type-desc">4 interest-free payments of ${installment}</div>
+              </div>
+            </label>
+            <label class="klarna-type-option">
+              <input type="radio" name="klarna-type" value="pay_later" />
+              <div class="klarna-type-card">
+                <div class="klarna-type-title">Pay in 30 days</div>
+                <div class="klarna-type-desc">Try first, pay later</div>
+              </div>
+            </label>
+            <label class="klarna-type-option">
+              <input type="radio" name="klarna-type" value="pay_now" />
+              <div class="klarna-type-card">
+                <div class="klarna-type-title">Pay now</div>
+                <div class="klarna-type-desc">Direct payment</div>
+              </div>
+            </label>
+          </div>
+
+          <button class="btn-klarna-pay" data-klarna-confirm>Confirm with Klarna</button>
+          <button class="btn-gpay-cancel" data-klarna-cancel>Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ---- Confirmation Screen ----
 function renderConfirmation() {
   const data = state.confirmationData || { transactionId: 'N/A', amount: '$0.00' };
@@ -413,6 +463,9 @@ function attachEvents() {
     if (e.target.closest('[data-restart]')) { state.cart = []; state.confirmationData = null; state.paymentState = 'idle'; navigate('catalog'); return; }
     if (e.target.closest('[data-pay-card]')) { startCardPayment(); return; }
     if (e.target.closest('[data-pay-gpay]')) { startGooglePay(); return; }
+    if (e.target.closest('[data-pay-klarna]')) { startKlarna(); return; }
+    if (e.target.closest('[data-klarna-confirm]')) { confirmKlarna(); return; }
+    if (e.target.closest('[data-klarna-cancel]')) { state.paymentState = 'idle'; render(); return; }
     if (e.target.closest('[data-card-cancel]')) { state.paymentState = 'idle'; render(); return; }
     if (e.target.closest('[data-card-submit]')) { submitCardPayment(); return; }
     if (e.target.closest('[data-gpay-confirm]')) { confirmGooglePay(); return; }
@@ -612,6 +665,66 @@ async function confirmGooglePay() {
   }
 }
 
+// ---- Klarna Payment Flow ----
+function startKlarna() {
+  state.paymentState = 'klarna-select';
+  state.activePaymentMethod = 'klarna';
+  logEvent('lifecycle', 'Klarna payment initiated');
+  logEvent('sdk', 'Klarna.Payments.init()', { clientToken: 'klarna_test_client_...' });
+  render();
+}
+
+async function confirmKlarna() {
+  const selectedType = document.querySelector('input[name="klarna-type"]:checked')?.value || 'pay_over_time';
+  state.paymentState = 'capturing';
+  render();
+
+  logEvent('sdk', 'Klarna.Payments.authorize()', { paymentMethodCategory: selectedType, amount: formatCents(totalCents()) });
+
+  try {
+    // Step 1: Create session
+    logEvent('api', 'POST /api/klarna/session', { amountCents: totalCents(), paymentMethodCategory: selectedType });
+    const sessionRes = await fetch('/api/klarna/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: totalCents(), locale: 'en-US', paymentMethodCategory: selectedType })
+    });
+
+    if (!sessionRes.ok) throw new Error('Klarna session failed');
+    const session = await sessionRes.json();
+    logEvent('sdk', 'Session created', { sessionId: session.sessionId, categories: session.paymentMethodCategories });
+
+    // Step 2: Authorize payment
+    const authToken = 'klarna_auth_' + Date.now();
+    logEvent('sdk', 'Klarna.Payments.authorize() -> approved', { authorizationToken: authToken });
+
+    logEvent('api', 'POST /api/klarna/payment', { amount: totalDollars(), authorizationToken: authToken, paymentMethodCategory: selectedType });
+    const payRes = await fetch('/api/klarna/payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: totalDollars(), authorizationToken: authToken, paymentMethodCategory: selectedType })
+    });
+
+    if (!payRes.ok) throw new Error('Klarna payment failed');
+    const payData = await payRes.json();
+    logEvent('api', 'Response 200 OK', payData);
+    logEvent('sdk', 'Klarna order created', { orderId: payData.orderId, status: payData.status });
+
+    state.confirmationData = {
+      transactionId: payData.transactionId,
+      amount: formatCents(totalCents()),
+      paymentMethod: 'Klarna \u00B7 ' + payData.paymentType
+    };
+    state.paymentState = 'complete';
+    navigate('confirmation');
+  } catch (err) {
+    logEvent('error', 'Klarna payment failed: ' + err.message);
+    state.paymentState = 'idle';
+    state.errorMessage = err.message;
+    render();
+  }
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ---- Backend Health Check ----
@@ -669,6 +782,7 @@ function renderDocumentation() {
       <a href="#" class="docs-nav-link" data-section="doc-tech-specs">Technical Specifications</a>
       <a href="#" class="docs-nav-link" data-section="doc-testing">Testing Requirements</a>
       <a href="#" class="docs-nav-link" data-section="doc-analysis">SDK Implementation Analysis</a>
+      <a href="#" class="docs-nav-link" data-section="doc-klarna">Klarna Integration</a>
     </nav>
     <div class="docs-content-area">
       ${renderDocArchitecture()}
@@ -676,6 +790,7 @@ function renderDocumentation() {
       ${renderDocTechSpecs()}
       ${renderDocTesting()}
       ${renderDocAnalysis()}
+      ${renderDocKlarna()}
     </div>
   `;
   // Render mermaid diagrams
@@ -1293,6 +1408,89 @@ flowchart LR
         <tr><td>Direct API</td><td>CreditCardManager, PaymentManager</td><td>CashAppPayViewModel + CaptureClient</td><td>We handle capture explicitly</td></tr>
         <tr><td>Cash App Pay</td><td>Not available in CardFree</td><td>Custom bridge module</td><td>Our addition to the ecosystem</td></tr>
       </table>
+    </section>
+  `;
+}
+
+// ---- Documentation Section: Klarna Integration ----
+function renderDocKlarna() {
+  return `
+    <section id="doc-klarna">
+    <h2 id="doc-klarna">Klarna Integration</h2>
+    <p>Klarna enables flexible payment options: Pay in 4 (interest-free installments), Pay Later (30 days), and Pay Now (direct payment).</p>
+
+    <h3>Klarna Payment Flow</h3>
+    <pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant UI as Klarna Modal
+    participant BE as Backend :8080
+    participant K as Klarna API
+
+    U->>UI: Select Klarna at checkout
+    UI->>UI: Choose payment type (Pay in 4)
+    UI->>BE: POST /api/klarna/session
+    BE-->>UI: {sessionId, clientToken}
+    UI->>UI: Klarna.Payments.authorize()
+    UI->>BE: POST /api/klarna/payment
+    BE-->>UI: {transactionId, orderId, status}
+    UI->>U: Confirmation screen
+    </pre>
+
+    <h3>Credentials</h3>
+    <table>
+    <tr><th>Credential</th><th>Value</th><th>Purpose</th></tr>
+    <tr><td>API Key (Username)</td><td><code>2d434281-4a6b-415f-afae-11d4f3a9d592</code></td><td>Klarna merchant identifier</td></tr>
+    <tr><td>Client Identifier</td><td><code>klarna_test_client_...</code></td><td>JS SDK initialization token</td></tr>
+    <tr><td>Merchant</td><td><code>PN129867</code></td><td>Klarna merchant account</td></tr>
+    <tr><td>Sandbox API</td><td><code>api-na.playground.klarna.com</code></td><td>North America sandbox</td></tr>
+    </table>
+
+    <h3>Payment Types</h3>
+    <table>
+    <tr><th>Category</th><th>Name</th><th>Description</th></tr>
+    <tr><td><code>pay_over_time</code></td><td>Pay in 4</td><td>4 interest-free biweekly installments</td></tr>
+    <tr><td><code>pay_later</code></td><td>Pay in 30 days</td><td>Invoice, try before you buy</td></tr>
+    <tr><td><code>pay_now</code></td><td>Pay now</td><td>Direct debit, bank transfer, card</td></tr>
+    </table>
+
+    <h3>API Endpoints</h3>
+
+    <h4>POST /api/klarna/session</h4>
+    <p>Creates a Klarna payment session.</p>
+    <strong>Request:</strong>
+    <pre><code>{
+  "amountCents": 24999,
+  "locale": "en-US",
+  "paymentMethodCategory": "pay_over_time"
+}</code></pre>
+    <strong>Response (200):</strong>
+    <pre><code>{
+  "sessionId": "klarna_session_1775200000000",
+  "clientToken": "klarna_test_client_...",
+  "paymentMethodCategories": ["pay_now", "pay_later", "pay_over_time"]
+}</code></pre>
+
+    <h4>POST /api/klarna/payment</h4>
+    <p>Authorizes and captures a Klarna payment.</p>
+    <strong>Request:</strong>
+    <pre><code>{
+  "amount": 249.99,
+  "authorizationToken": "klarna_auth_1775200000000",
+  "paymentMethodCategory": "pay_over_time"
+}</code></pre>
+    <strong>Response (200):</strong>
+    <pre><code>{
+  "transactionId": "TXN_KLARNA_1775200000000",
+  "orderId": "KL_ORD_1775200000000",
+  "amount": 249.99,
+  "status": "AUTHORIZED",
+  "paymentMethod": "KLARNA",
+  "paymentType": "Pay in 4 installments"
+}</code></pre>
+
+    <h3>Promo Messaging</h3>
+    <p>Product cards in the catalog display Klarna installment messaging: "or 4 x $62.50 with <strong>Klarna</strong>". This is calculated as <code>Math.ceil(priceInCents / 4)</code> and formatted as currency.</p>
     </section>
   `;
 }

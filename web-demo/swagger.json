@@ -20,7 +20,8 @@
     { "name": "Cash App Pay", "description": "Real Cash App sandbox payment capture via sandbox.api.cash.app" },
     { "name": "Credit Card", "description": "Simulated card tokenization and payment (mirrors CardFree CreditCardManager + PaymentManager)" },
     { "name": "Google Pay", "description": "Simulated Google Pay payment (mirrors CardFree GooglePay + PaymentManager)" },
-    { "name": "Onboarding", "description": "Merchant setup via Cash App sandbox (brand + merchant creation)" }
+    { "name": "Onboarding", "description": "Merchant setup via Cash App sandbox (brand + merchant creation)" },
+    { "name": "Klarna", "description": "Klarna payment session and authorization (Pay in 4, Pay Later, Pay Now)" }
   ],
   "paths": {
     "/api/health": {
@@ -272,6 +273,79 @@
           }
         }
       }
+    },
+    "/api/klarna/session": {
+      "post": {
+        "tags": ["Klarna"],
+        "summary": "Create a Klarna payment session",
+        "description": "Creates a Klarna payment session with available payment method categories (Pay in 4, Pay Later, Pay Now). Returns a client token for Klarna JS SDK initialization. 400ms simulated delay.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/KlarnaSessionRequest" },
+              "example": {
+                "amountCents": 24999,
+                "locale": "en-US",
+                "paymentMethodCategory": "pay_over_time"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KlarnaSessionResponse" },
+                "example": {
+                  "sessionId": "klarna_session_1775200000000",
+                  "clientToken": "klarna_test_client_...",
+                  "paymentMethodCategories": ["pay_now", "pay_later", "pay_over_time"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/klarna/payment": {
+      "post": {
+        "tags": ["Klarna"],
+        "summary": "Authorize and capture a Klarna payment",
+        "description": "Authorizes and captures a Klarna payment using the authorization token from Klarna.Payments.authorize(). Supports pay_over_time (Pay in 4), pay_later (Pay in 30 days), and pay_now. 900ms simulated delay.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/KlarnaPaymentRequest" },
+              "example": {
+                "amount": 249.99,
+                "authorizationToken": "klarna_auth_1775200000000",
+                "paymentMethodCategory": "pay_over_time"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment authorized",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KlarnaPaymentResponse" },
+                "example": {
+                  "transactionId": "TXN_KLARNA_1775200000000",
+                  "orderId": "KL_ORD_1775200000000",
+                  "amount": 249.99,
+                  "status": "AUTHORIZED",
+                  "paymentMethod": "KLARNA",
+                  "paymentType": "Pay in 4 installments"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -359,6 +433,43 @@
         "properties": {
           "amount": { "type": "number", "format": "double" },
           "walletToken": { "type": "string", "description": "Google Pay PaymentData.toJson() string" }
+        }
+      },
+      "KlarnaSessionRequest": {
+        "type": "object",
+        "required": ["amountCents"],
+        "properties": {
+          "amountCents": { "type": "integer", "format": "int64", "description": "Amount in cents (e.g., 24999 = $249.99)" },
+          "locale": { "type": "string", "default": "en-US", "description": "Locale for Klarna session" },
+          "paymentMethodCategory": { "type": "string", "enum": ["pay_now", "pay_later", "pay_over_time"], "default": "pay_over_time", "description": "Preferred payment method category" }
+        }
+      },
+      "KlarnaSessionResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": { "type": "string", "description": "Klarna session ID" },
+          "clientToken": { "type": "string", "description": "Client token for Klarna JS SDK initialization" },
+          "paymentMethodCategories": { "type": "array", "items": { "type": "string" }, "description": "Available payment method categories" }
+        }
+      },
+      "KlarnaPaymentRequest": {
+        "type": "object",
+        "required": ["amount", "authorizationToken"],
+        "properties": {
+          "amount": { "type": "number", "format": "double", "description": "Amount in dollars (e.g., 249.99)" },
+          "authorizationToken": { "type": "string", "description": "Authorization token from Klarna.Payments.authorize()" },
+          "paymentMethodCategory": { "type": "string", "enum": ["pay_now", "pay_later", "pay_over_time"], "default": "pay_over_time" }
+        }
+      },
+      "KlarnaPaymentResponse": {
+        "type": "object",
+        "properties": {
+          "transactionId": { "type": "string", "description": "Transaction ID (TXN_KLARNA_... prefix)" },
+          "orderId": { "type": "string", "description": "Klarna order ID (KL_ORD_... prefix)" },
+          "amount": { "type": "number", "format": "double" },
+          "status": { "type": "string", "enum": ["AUTHORIZED"] },
+          "paymentMethod": { "type": "string", "enum": ["KLARNA"] },
+          "paymentType": { "type": "string", "description": "Human-readable payment type (e.g., 'Pay in 4 installments')" }
         }
       }
     }

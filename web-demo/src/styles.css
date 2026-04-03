@@ -1582,6 +1582,125 @@ body {
 .swagger-layout .swagger-ui .info { margin: 20px 0; }
 .swagger-layout .swagger-ui .scheme-container { display: none; }
 
+/* ---- Klarna Modal ---- */
+.klarna-modal {
+  background: white;
+  border-radius: 20px;
+  width: 340px;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+  animation: slideUp 0.3s ease;
+  margin: auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+}
+
+.klarna-header {
+  background: linear-gradient(135deg, #FFB3C7, #FF8FAB);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.klarna-logo-text {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0A0B09;
+}
+
+.klarna-body {
+  padding: 20px;
+  text-align: center;
+}
+
+.klarna-amount {
+  font-size: 32px;
+  font-weight: 800;
+  color: #1C1B1F;
+  margin-bottom: 2px;
+}
+
+.klarna-merchant {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.klarna-types {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.klarna-type-option {
+  cursor: pointer;
+  display: block;
+}
+
+.klarna-type-option input { display: none; }
+
+.klarna-type-card {
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  transition: all 0.2s;
+}
+
+.klarna-type-option input:checked + .klarna-type-card {
+  border-color: #FFB3C7;
+  background: #FFF5F7;
+}
+
+.klarna-type-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1C1B1F;
+}
+
+.klarna-type-desc {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.btn-klarna-pay {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: #0A0B09;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.btn-klarna-pay:active { opacity: 0.85; }
+
+/* Klarna promo on product cards */
+.klarna-promo {
+  font-size: 10px;
+  color: #888;
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
+.klarna-promo strong {
+  color: #FFB3C7;
+  font-weight: 700;
+}
+
+.btn-klarna-accent:hover {
+  border-color: #FFB3C7;
+  color: #0A0B09;
+}
+
 /* ============================================================
    Responsive — Original phone breakpoint
    ============================================================ */
