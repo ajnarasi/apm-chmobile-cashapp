@@ -30,6 +30,9 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven {
+            url = uri("https://x.klarnacdn.net/mobile-sdk/")
+        }
+        maven {
             url = uri("https://maven.pkg.github.com/Fiserv/mobile-payments-android")
             credentials {
                 username = customProperties["USERNAME"].toString()

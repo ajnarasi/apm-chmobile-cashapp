@@ -30,6 +30,7 @@ android {
 dependencies {
     implementation(project(":payment-sdk-shim"))
     implementation(libs.cashapp.paykit.core)
+    implementation(libs.klarna.mobile.sdk)
     implementation(libs.okhttp)
     implementation(libs.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)

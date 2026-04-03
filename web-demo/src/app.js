@@ -162,7 +162,7 @@ function renderCatalog() {
                 <span class="product-price">${formatCents(p.priceInCents)}</span>
                 <button class="btn-add" data-add="${p.id}">Add</button>
               </div>
-              <div class="klarna-promo">or 4 x ${formatCents(Math.ceil(p.priceInCents / 4))} with <strong>Klarna</strong></div>
+              <klarna-placement data-key="top-strip-promotion-badge" data-locale="en-US" data-purchase-amount="${p.priceInCents}"></klarna-placement>
             </div>
           </div>`;
         }).join('')}
@@ -401,6 +401,7 @@ function renderKlarnaOverlay() {
             </label>
           </div>
 
+          <div id="klarna-widget-container" style="min-height: 0; margin-bottom: 12px; text-align: left;"></div>
           <button class="btn-klarna-pay" data-klarna-confirm>Confirm with Klarna</button>
           <button class="btn-gpay-cancel" data-klarna-cancel>Cancel</button>
         </div>
@@ -682,23 +683,74 @@ async function confirmKlarna() {
   logEvent('sdk', 'Klarna.Payments.authorize()', { paymentMethodCategory: selectedType, amount: formatCents(totalCents()) });
 
   try {
-    // Step 1: Create session
+    // Step 1: Create real session via backend → Klarna sandbox API
     logEvent('api', 'POST /api/klarna/session', { amountCents: totalCents(), paymentMethodCategory: selectedType });
     const sessionRes = await fetch('/api/klarna/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amountCents: totalCents(), locale: 'en-US', paymentMethodCategory: selectedType })
+      body: JSON.stringify({ amountCents: totalCents(), locale: 'en-US', productName: 'CommerceHub Order', paymentMethodCategory: selectedType })
     });
 
     if (!sessionRes.ok) throw new Error('Klarna session failed');
     const session = await sessionRes.json();
-    logEvent('sdk', 'Session created', { sessionId: session.sessionId, categories: session.paymentMethodCategories });
+    logEvent('sdk', 'Klarna session created (real sandbox)', { sessionId: session.sessionId, categories: session.paymentMethodCategories });
 
-    // Step 2: Authorize payment
-    const authToken = 'klarna_auth_' + Date.now();
-    logEvent('sdk', 'Klarna.Payments.authorize() -> approved', { authorizationToken: authToken });
+    // Step 2: Initialize Klarna JS SDK with real client_token
+    let authToken = null;
+    if (typeof Klarna !== 'undefined' && Klarna.Payments) {
+      logEvent('sdk', 'Klarna.Payments.init({ client_token })', { tokenLength: session.clientToken.length });
+      try {
+        Klarna.Payments.init({ client_token: session.clientToken });
+        logEvent('sdk', 'Klarna.Payments.init() success');
 
-    logEvent('api', 'POST /api/klarna/payment', { amountCents: totalCents(), authorizationToken: authToken, paymentMethodCategory: selectedType });
+        // Step 3: Load Klarna widget
+        await new Promise((resolve, reject) => {
+          const category = session.paymentMethodCategories[0] || 'klarna';
+          logEvent('sdk', 'Klarna.Payments.load()', { container: '#klarna-widget-container', category });
+          Klarna.Payments.load(
+            { container: '#klarna-widget-container', payment_method_category: category },
+            {},
+            function(res) {
+              if (res.error) { logEvent('error', 'Klarna.Payments.load() error', res.error); reject(new Error(res.error.invalid_fields?.join(', ') || 'Load failed')); }
+              else { logEvent('sdk', 'Klarna.Payments.load() success', { show_form: res.show_form }); resolve(res); }
+            }
+          );
+        });
+
+        // Step 4: Authorize
+        const authRes = await new Promise((resolve, reject) => {
+          const category = session.paymentMethodCategories[0] || 'klarna';
+          logEvent('sdk', 'Klarna.Payments.authorize()', { category, auto_finalize: true });
+          Klarna.Payments.authorize(
+            { payment_method_category: category },
+            {},
+            function(res) {
+              logEvent('sdk', 'Klarna.Payments.authorize() result', { approved: res.approved, finalize_required: res.finalize_required, has_token: !!res.authorization_token });
+              if (res.approved && res.authorization_token) { resolve(res); }
+              else if (res.approved && res.finalize_required) {
+                logEvent('sdk', 'Klarna.Payments.finalize() required');
+                Klarna.Payments.finalize({}, {}, function(fRes) {
+                  if (fRes.approved && fRes.authorization_token) resolve(fRes);
+                  else reject(new Error('Finalization failed'));
+                });
+              }
+              else { reject(new Error('Authorization not approved')); }
+            }
+          );
+        });
+        authToken = authRes.authorization_token;
+        logEvent('sdk', 'Klarna authorized (real)', { authorizationToken: authToken.substring(0, 20) + '...' });
+      } catch (sdkErr) {
+        logEvent('error', 'Klarna JS SDK error: ' + sdkErr.message + ' - falling back to simulated flow');
+        authToken = 'klarna_auth_' + Date.now();
+      }
+    } else {
+      logEvent('sdk', 'Klarna JS SDK not loaded - using simulated auth');
+      authToken = 'klarna_auth_' + Date.now();
+    }
+
+    // Step 5: Capture via backend → Klarna order API
+    logEvent('api', 'POST /api/klarna/payment', { amountCents: totalCents(), authorizationToken: authToken?.substring(0, 20) + '...', paymentMethodCategory: selectedType });
     const payRes = await fetch('/api/klarna/payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
