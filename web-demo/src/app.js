@@ -65,10 +65,11 @@ const state = {
   screen: 'catalog',
   selectedCategory: 'All',
   cart: [], // { product, quantity }[]
-  paymentState: 'idle', // idle | redirecting | authorizing | capturing | complete | error | declined
+  paymentState: 'idle', // idle | redirecting | authorizing | capturing | complete | error | declined | card-entry | gpay-confirm
   confirmationData: null,
   errorMessage: '',
   backendOnline: false,
+  activePaymentMethod: null, // 'cashapp' | 'card' | 'googlepay'
 };
 
 // ---- Helpers (match CartViewModel.kt) ----
@@ -123,6 +124,12 @@ function render() {
   // Overlay for Cash App auth
   if (state.paymentState === 'redirecting' || state.paymentState === 'authorizing') {
     el.innerHTML += renderCashAppOverlay();
+  }
+  if (state.paymentState === 'card-entry') {
+    el.innerHTML += renderCardEntryOverlay();
+  }
+  if (state.paymentState === 'gpay-confirm') {
+    el.innerHTML += renderGooglePayOverlay();
   }
   attachEvents();
 }
@@ -245,8 +252,8 @@ function renderCheckout() {
 
         <div class="divider-or">or pay with</div>
 
-        <button class="btn-outline">\uD83D\uDCB3 &nbsp;Credit / Debit Card</button>
-        <button class="btn-outline" style="margin-top: 8px;">G Pay &nbsp;Google Pay</button>
+        <button class="btn-outline" data-pay-card>\uD83D\uDCB3 &nbsp;Credit / Debit Card</button>
+        <button class="btn-outline" data-pay-gpay style="margin-top: 8px;">G Pay &nbsp;Google Pay</button>
 
         <div class="checkout-footer">All payment methods powered by Fiserv CommerceHub</div>
       </div>
@@ -283,6 +290,74 @@ function renderCashAppOverlay() {
   return '';
 }
 
+// ---- Card Entry Overlay ----
+function renderCardEntryOverlay() {
+  return `
+    <div class="cashapp-overlay">
+      <div class="card-entry-modal">
+        <div class="card-modal-header">
+          <span class="card-modal-title">Enter Card Details</span>
+          <button class="card-modal-close" data-card-cancel>&times;</button>
+        </div>
+        <div class="card-modal-body">
+          <div class="card-field">
+            <label>Card Number</label>
+            <input type="text" id="card-number" placeholder="4242 4242 4242 4242" maxlength="19" />
+          </div>
+          <div class="card-field-row">
+            <div class="card-field">
+              <label>Expiry</label>
+              <input type="text" id="card-expiry" placeholder="MM/YY" maxlength="5" />
+            </div>
+            <div class="card-field">
+              <label>CVV</label>
+              <input type="text" id="card-cvv" placeholder="123" maxlength="4" />
+            </div>
+          </div>
+          <div class="card-field">
+            <label>Cardholder Name</label>
+            <input type="text" id="card-name" placeholder="John Doe" />
+          </div>
+          <div class="card-field">
+            <label>Postal Code</label>
+            <input type="text" id="card-zip" placeholder="94107" maxlength="10" />
+          </div>
+          <div id="card-error" class="card-error"></div>
+          <button class="btn-primary" id="card-submit" data-card-submit style="margin-top: 12px;">
+            Pay ${formatCents(totalCents())}
+          </button>
+        </div>
+        <div class="card-modal-footer">Secured by Fiserv CommerceHub</div>
+      </div>
+    </div>`;
+}
+
+// ---- Google Pay Overlay ----
+function renderGooglePayOverlay() {
+  return `
+    <div class="cashapp-overlay">
+      <div class="gpay-modal">
+        <div class="gpay-header">
+          <span style="font-size: 24px; font-weight: 700;">G</span>
+          <span style="font-size: 20px; font-weight: 600; margin-left: 4px;">Google Pay</span>
+        </div>
+        <div class="gpay-body">
+          <div class="gpay-amount">${formatCents(totalCents())}</div>
+          <div class="gpay-merchant">CommerceHub Demo Store</div>
+          <div class="gpay-card-info">
+            <div class="gpay-card-icon">\uD83D\uDCB3</div>
+            <div>
+              <div style="font-weight: 600;">Visa \u2022\u2022\u2022\u20224242</div>
+              <div style="font-size: 12px; color: #666;">Test Card</div>
+            </div>
+          </div>
+          <button class="btn-gpay-confirm" data-gpay-confirm>Pay</button>
+          <button class="btn-gpay-cancel" data-gpay-cancel>Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ---- Confirmation Screen ----
 function renderConfirmation() {
   const data = state.confirmationData || { transactionId: 'N/A', amount: '$0.00' };
@@ -294,7 +369,7 @@ function renderConfirmation() {
       <div class="card confirmation-card">
         <div class="detail-row"><div class="detail-label">Amount Charged</div><div class="detail-value highlight">${data.amount}</div></div>
         <div class="summary-divider"></div>
-        <div class="detail-row"><div class="detail-label">Payment Method</div><div class="detail-value">Cash App Pay</div></div>
+        <div class="detail-row"><div class="detail-label">Payment Method</div><div class="detail-value">${data.paymentMethod || 'Cash App Pay'}</div></div>
         <div style="height: 8px;"></div>
         <div class="detail-row"><div class="detail-label">Transaction ID</div><div class="detail-value" style="font-size: 13px; word-break: break-all;">${data.transactionId}</div></div>
         <div style="height: 8px;"></div>
@@ -336,11 +411,18 @@ function attachEvents() {
     if (e.target.closest('[data-decline-pay]')) { declineCashApp(); return; }
     if (e.target.closest('[data-retry]')) { startCashAppPay(); return; }
     if (e.target.closest('[data-restart]')) { state.cart = []; state.confirmationData = null; state.paymentState = 'idle'; navigate('catalog'); return; }
+    if (e.target.closest('[data-pay-card]')) { startCardPayment(); return; }
+    if (e.target.closest('[data-pay-gpay]')) { startGooglePay(); return; }
+    if (e.target.closest('[data-card-cancel]')) { state.paymentState = 'idle'; render(); return; }
+    if (e.target.closest('[data-card-submit]')) { submitCardPayment(); return; }
+    if (e.target.closest('[data-gpay-confirm]')) { confirmGooglePay(); return; }
+    if (e.target.closest('[data-gpay-cancel]')) { state.paymentState = 'idle'; render(); return; }
   };
 }
 
 // ---- Cash App Pay Flow ----
 async function startCashAppPay() {
+  state.activePaymentMethod = 'cashapp';
   logEvent('sdk', 'CashAppPayFlowState: CreatingCustomerRequest', { amount: formatCents(totalCents()), amountCents: totalCents() });
   state.paymentState = 'redirecting';
   state.errorMessage = '';
@@ -375,7 +457,7 @@ async function approveCashApp() {
 
     if (res.ok) {
       const data = await res.json();
-      state.confirmationData = { transactionId: data.paymentId, amount: formatCents(totalCents()) };
+      state.confirmationData = { transactionId: data.paymentId, amount: formatCents(totalCents()), paymentMethod: 'Cash App Pay' };
       logEvent('api', 'Response 200 OK', data);
       logEvent('sdk', 'CashAppPayFlowState: PaymentComplete', { transactionId: data.paymentId || state.confirmationData.transactionId, amount: totalCents() });
     } else {
@@ -383,6 +465,7 @@ async function approveCashApp() {
       state.confirmationData = {
         transactionId: `TXN_DEMO_${Date.now()}`,
         amount: formatCents(totalCents()),
+        paymentMethod: 'Cash App Pay',
       };
       logEvent('api', 'Response ' + res.status, { fallback: true });
       logEvent('sdk', 'CashAppPayFlowState: PaymentComplete', { transactionId: state.confirmationData.transactionId, amount: totalCents() });
@@ -395,6 +478,7 @@ async function approveCashApp() {
     state.confirmationData = {
       transactionId: `TXN_OFFLINE_${Date.now()}`,
       amount: formatCents(totalCents()),
+      paymentMethod: 'Cash App Pay',
     };
     state.paymentState = 'complete';
     navigate('confirmation');
@@ -405,6 +489,127 @@ function declineCashApp() {
   logEvent('sdk', 'CashAppPayFlowState: Declined');
   state.paymentState = 'declined';
   render();
+}
+
+// ---- Credit Card Payment Flow ----
+function startCardPayment() {
+  state.paymentState = 'card-entry';
+  state.activePaymentMethod = 'card';
+  logEvent('lifecycle', 'Credit Card payment initiated');
+  render();
+}
+
+async function submitCardPayment() {
+  const cardNumber = document.getElementById('card-number')?.value?.replace(/\s/g, '') || '';
+  const expiry = document.getElementById('card-expiry')?.value || '';
+  const cvv = document.getElementById('card-cvv')?.value || '';
+  const name = document.getElementById('card-name')?.value || '';
+  const zip = document.getElementById('card-zip')?.value || '';
+
+  // Basic validation
+  if (cardNumber.length < 13) {
+    document.getElementById('card-error').textContent = 'Please enter a valid card number';
+    return;
+  }
+  if (!expiry.includes('/')) {
+    document.getElementById('card-error').textContent = 'Please enter expiry as MM/YY';
+    return;
+  }
+
+  const [expiryMonth, expiryYear] = expiry.split('/');
+
+  state.paymentState = 'capturing';
+  render();
+
+  logEvent('sdk', 'CreditCardManager.addCreditCard()', { lastFour: cardNumber.slice(-4), cardholderName: name });
+
+  try {
+    // Step 1: Tokenize
+    logEvent('api', 'POST /api/card/tokenize', { cardNumber: '****' + cardNumber.slice(-4), expiryMonth, expiryYear });
+    const tokenRes = await fetch('/api/card/tokenize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cardNumber, expiryMonth, expiryYear: '20' + expiryYear, cvv, cardholderName: name, postalCode: zip })
+    });
+
+    if (!tokenRes.ok) throw new Error('Tokenization failed');
+    const tokenData = await tokenRes.json();
+    logEvent('sdk', 'Card tokenized', { token: tokenData.token, cardType: tokenData.cardType, lastFour: tokenData.lastFour });
+
+    // Step 2: Payment
+    logEvent('api', 'POST /api/card/payment (PaymentManager.sale)', { amount: totalDollars(), token: tokenData.token, type: 'SALE' });
+    const payRes = await fetch('/api/card/payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: totalDollars(), token: tokenData.token, transactionType: 'SALE', cardType: tokenData.cardType, lastFour: tokenData.lastFour })
+    });
+
+    if (!payRes.ok) throw new Error('Payment declined');
+    const payData = await payRes.json();
+    logEvent('api', 'Response 200 OK', payData);
+    logEvent('sdk', 'Response<Transaction>.success()', { transactionId: payData.transactionId, amount: payData.amount });
+
+    state.confirmationData = {
+      transactionId: payData.transactionId,
+      amount: formatCents(totalCents()),
+      paymentMethod: `${payData.cardType} \u2022\u2022\u2022\u2022${payData.lastFour}`
+    };
+    state.paymentState = 'complete';
+    navigate('confirmation');
+  } catch (err) {
+    logEvent('error', 'Card payment failed: ' + err.message);
+    state.paymentState = 'card-entry';
+    render();
+    setTimeout(() => {
+      const errEl = document.getElementById('card-error');
+      if (errEl) errEl.textContent = err.message;
+    }, 50);
+  }
+}
+
+// ---- Google Pay Flow ----
+function startGooglePay() {
+  state.paymentState = 'gpay-confirm';
+  state.activePaymentMethod = 'googlepay';
+  logEvent('lifecycle', 'Google Pay initiated');
+  logEvent('sdk', 'PaymentManager.getGooglePayRequestConfig()');
+  logEvent('sdk', 'PaymentsClient.loadPaymentData(request)');
+  render();
+}
+
+async function confirmGooglePay() {
+  state.paymentState = 'capturing';
+  render();
+
+  const walletToken = JSON.stringify({ type: 'CARD', info: { cardNetwork: 'VISA', cardDetails: '4242' } });
+  logEvent('sdk', 'GooglePay(walletToken)', { walletToken: '{ type: CARD, cardNetwork: VISA }' });
+  logEvent('api', 'POST /api/googlepay/payment', { amount: totalDollars(), walletToken: '...' });
+
+  try {
+    const res = await fetch('/api/googlepay/payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: totalDollars(), walletToken })
+    });
+
+    if (!res.ok) throw new Error('Google Pay failed');
+    const data = await res.json();
+    logEvent('api', 'Response 200 OK', data);
+    logEvent('sdk', 'Response<Transaction>.success()', { transactionId: data.transactionId });
+
+    state.confirmationData = {
+      transactionId: data.transactionId,
+      amount: formatCents(totalCents()),
+      paymentMethod: 'Google Pay'
+    };
+    state.paymentState = 'complete';
+    navigate('confirmation');
+  } catch (err) {
+    logEvent('error', 'Google Pay failed: ' + err.message);
+    state.paymentState = 'idle';
+    state.errorMessage = err.message;
+    render();
+  }
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -438,6 +643,18 @@ function switchTab(tabName) {
   }
   if (tabName === 'guide' && !document.getElementById('guide-content').innerHTML) {
     renderGettingStarted();
+  }
+  if (tabName === 'swagger' && !document.getElementById('swagger-container').hasChildNodes()) {
+    if (typeof SwaggerUIBundle !== 'undefined') {
+      SwaggerUIBundle({
+        url: '/swagger.json',
+        dom_id: '#swagger-container',
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: 'BaseLayout',
+        defaultModelsExpandDepth: -1,
+        docExpansion: 'list'
+      });
+    }
   }
 }
 
@@ -601,6 +818,38 @@ stateDiagram-v2
         <tr><td>CashAppPayExceptionState</td><td>Error(message, cause)</td><td>Surface exception</td></tr>
       </table>
 
+      <h3>Credit Card Payment Flow</h3>
+      <pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant UI as Card Entry Modal
+    participant BE as Backend :8080
+
+    U->>UI: Enter card details
+    UI->>BE: POST /api/card/tokenize
+    BE-->>UI: {token, lastFour, cardType}
+    UI->>BE: POST /api/card/payment
+    Note over BE: Simulates PaymentManager.sale()
+    BE-->>UI: {transactionId, status: CAPTURED}
+    UI->>U: Confirmation screen
+</pre>
+
+      <h3>Google Pay Payment Flow</h3>
+      <pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant GP as Google Pay Dialog
+    participant BE as Backend :8080
+
+    U->>GP: Select Google Pay
+    Note over GP: PaymentsClient.loadPaymentData()
+    GP->>U: Confirm payment
+    U->>BE: POST /api/googlepay/payment
+    Note over BE: Simulates GooglePay + PaymentManager.sale()
+    BE-->>U: {transactionId, status: CAPTURED}
+    U->>U: Confirmation screen
+</pre>
+
       <h3>Backend API Endpoints</h3>
 
       <h4>POST /api/payments/initiate</h4>
@@ -649,6 +898,67 @@ stateDiagram-v2
   "service": "cashapp-pay-sandbox-proxy"
 }</code></pre>
       </div>
+
+      <h3>Credit Card Endpoints</h3>
+
+      <h4>POST /api/card/tokenize</h4>
+      <p>Simulates CardFree <code>CreditCardManager.addCreditCard()</code>. Tokenizes card details and detects card type (4→VISA, 5→MC, 3→AMEX, 6→DISCOVER).</p>
+      <strong>Request:</strong>
+      <pre><code>{
+  "cardNumber": "4242424242424242",
+  "expiryMonth": "12",
+  "expiryYear": "2027",
+  "cvv": "123",
+  "cardholderName": "Ajay Test",
+  "postalCode": "94107"
+}</code></pre>
+      <strong>Response (200):</strong>
+      <pre><code>{
+  "token": "tok_1775186317000_4242",
+  "lastFour": "4242",
+  "cardType": "VISA",
+  "expiryMonth": "12",
+  "expiryYear": "2027"
+}</code></pre>
+
+      <h4>POST /api/card/payment</h4>
+      <p>Simulates CardFree <code>PaymentManager.sale()</code>. Processes payment using token from tokenize step. Amount $66.70 triggers decline.</p>
+      <strong>Request:</strong>
+      <pre><code>{
+  "amount": 43.38,
+  "token": "tok_1775186317000_4242",
+  "transactionType": "SALE",
+  "cardType": "VISA",
+  "lastFour": "4242"
+}</code></pre>
+      <strong>Response (200):</strong>
+      <pre><code>{
+  "transactionId": "TXN_CARD_1775186317144",
+  "amount": 43.38,
+  "status": "CAPTURED",
+  "cardType": "VISA",
+  "lastFour": "4242",
+  "paymentMethod": "CREDIT_CARD"
+}</code></pre>
+
+      <h3>Google Pay Endpoint</h3>
+
+      <h4>POST /api/googlepay/payment</h4>
+      <p>Simulates CardFree <code>GooglePay(walletToken)</code> + <code>PaymentManager.sale()</code>. Processes Google Pay wallet token.</p>
+      <strong>Request:</strong>
+      <pre><code>{
+  "amount": 1735.98,
+  "walletToken": "{\\"type\\":\\"CARD\\",\\"info\\":{\\"cardNetwork\\":\\"VISA\\"}}"
+}</code></pre>
+      <strong>Response (200):</strong>
+      <pre><code>{
+  "transactionId": "TXN_GPAY_1775186382134",
+  "amount": 1735.98,
+  "status": "CAPTURED",
+  "cardType": "GOOGLE_PAY",
+  "lastFour": "••••",
+  "paymentMethod": "GOOGLE_PAY"
+}</code></pre>
 
       <h3>Cash App Sandbox API (Upstream)</h3>
 
@@ -839,6 +1149,26 @@ function renderDocTechSpecs() {
         <tr><td><code>Accept</code></td><td><code>application/json</code></td><td>Required &mdash; API returns 400 without it</td></tr>
       </table>
 
+      <h3>(e) Credit Card Integration Model</h3>
+      <p>The card payment flow mirrors CardFree's <code>CreditCardManager</code> + <code>PaymentManager</code> pattern:</p>
+      <table><tr><th>Step</th><th>CardFree SDK (Real)</th><th>Our Simulation</th></tr>
+      <tr><td>Card Entry</td><td>CreditCardDetailsModal composable</td><td>Custom HTML card entry modal</td></tr>
+      <tr><td>Tokenization</td><td>CreditCardManager.addCreditCard()</td><td>POST /api/card/tokenize</td></tr>
+      <tr><td>Payment</td><td>PaymentManager.sale(Payment(amount, creditCard))</td><td>POST /api/card/payment</td></tr>
+      <tr><td>Response</td><td>Response&lt;Transaction&gt;.success()</td><td>CardPaymentResponse JSON</td></tr>
+      </table>
+      <p><strong>Card type detection:</strong> First digit of card number: 4→VISA, 5→MASTERCARD, 3→AMEX, 6→DISCOVER.</p>
+      <p><strong>Decline testing:</strong> Amount $66.70 triggers simulated insufficient funds decline.</p>
+
+      <h3>(f) Google Pay Integration Model</h3>
+      <p>Mirrors CardFree's <code>GooglePay(walletToken)</code> → <code>PaymentManager.sale()</code> pattern:</p>
+      <table><tr><th>Step</th><th>CardFree SDK (Real)</th><th>Our Simulation</th></tr>
+      <tr><td>Init</td><td>PaymentsClient + PaymentDataRequest</td><td>GPay confirmation dialog</td></tr>
+      <tr><td>Auth</td><td>loadPaymentData() → PaymentData</td><td>User clicks "Pay" in dialog</td></tr>
+      <tr><td>Token</td><td>GooglePay(walletToken = paymentData.toJson())</td><td>JSON wallet token string</td></tr>
+      <tr><td>Payment</td><td>PaymentManager.sale(Payment(amount, googlePay))</td><td>POST /api/googlepay/payment</td></tr>
+      </table>
+
       <h3>(d) Workflow Diagrams</h3>
       <p>
         Refer to the Architecture Overview section for the System Architecture Diagram and Payment Flow Sequence,
@@ -865,6 +1195,8 @@ function renderDocTesting() {
         <tr><td>Price formatting</td><td>Product</td><td>159999 -&gt; "$1,599.99"</td></tr>
         <tr><td>Idempotency generation</td><td>CashAppPayViewModel</td><td>UUID unique per call</td></tr>
         <tr><td>DataStore round-trip</td><td>CashAppPayStatePersistence</td><td>Save + load returns same values</td></tr>
+        <tr><td>Card type detection</td><td>CardPaymentRoutes</td><td>4→VISA, 5→MC, 3→AMEX, 6→DISCOVER</td></tr>
+        <tr><td>Card decline trigger</td><td>CardPaymentRoutes</td><td>Amount $66.70 returns 400 DECLINED</td></tr>
       </table>
 
       <h3>(b) Regression Tests</h3>
@@ -885,6 +1217,10 @@ function renderDocTesting() {
         <tr><td>Decline flow</td><td>UI: tap Decline</td><td>Returns to checkout</td><td>"Payment declined" message</td></tr>
         <tr><td>Backend offline</td><td>Stop backend, run web demo</td><td>Fallback txn ID</td><td>TXN_OFFLINE_* generated</td></tr>
         <tr><td>Health check</td><td>GET /api/health</td><td>200 OK</td><td>{"status":"ok"}</td></tr>
+        <tr><td>Credit Card happy path</td><td>Web demo: card entry → tokenize → payment</td><td>TXN_CARD_1775186317144 — VISA ••••4242, $43.38</td></tr>
+        <tr><td>Google Pay happy path</td><td>Web demo: GPay dialog → confirm → payment</td><td>TXN_GPAY_1775186382134 — Google Pay, $1,735.98</td></tr>
+        <tr><td>Card decline ($66.70)</td><td>Backend: POST /api/card/payment with amount=66.70</td><td>400 — "insufficient funds"</td></tr>
+        <tr><td>Card type detection</td><td>Tokenize with leading digit 4/5/3/6</td><td>VISA/MASTERCARD/AMEX/DISCOVER</td></tr>
       </table>
     </section>
   `;

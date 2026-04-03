@@ -1,0 +1,366 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CommerceHub Cash App Pay Integration API",
+    "description": "Backend API for the CommerceHub Cash App Pay integration demo. Supports 3 payment methods: Cash App Pay (real sandbox), Credit Card (simulated), and Google Pay (simulated). Cash App Pay endpoints proxy to sandbox.api.cash.app with real credentials.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Fiserv CommerceHub",
+      "url": "https://github.com/ajnarasi/apm-chmobile-cashapp"
+    }
+  },
+  "servers": [
+    {
+      "url": "",
+      "description": "Current host (works on localhost and Vercel)"
+    }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Backend health check" },
+    { "name": "Cash App Pay", "description": "Real Cash App sandbox payment capture via sandbox.api.cash.app" },
+    { "name": "Credit Card", "description": "Simulated card tokenization and payment (mirrors CardFree CreditCardManager + PaymentManager)" },
+    { "name": "Google Pay", "description": "Simulated Google Pay payment (mirrors CardFree GooglePay + PaymentManager)" },
+    { "name": "Onboarding", "description": "Merchant setup via Cash App sandbox (brand + merchant creation)" }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Backend health check",
+        "description": "Returns OK if the backend server is running. Used by the web demo to show connection status.",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "service": { "type": "string", "example": "cashapp-pay-sandbox-proxy" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/payments/initiate": {
+      "post": {
+        "tags": ["Cash App Pay"],
+        "summary": "Capture a Cash App payment",
+        "description": "Proxies to Cash App sandbox API (POST /network/v1/payments) with authentication headers. Uses magic grant ID GRG_sandbox:active for sandbox testing. The backend adds: Authorization: Client {CLIENT_ID} {API_KEY_ID}, Accept: application/json, X-Region: SFO, x-signature: sandbox:skip-signature-check.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CashAppPaymentRequest" },
+              "example": {
+                "grantId": "GRG_sandbox:active",
+                "amountCents": 31462,
+                "idempotencyKey": "550e8400-e29b-41d4-a716-446655440000"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment captured successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CashAppPaymentResponse" },
+                "example": {
+                  "paymentId": "PWC_2yam7aabfdpr0h422ge3snv26",
+                  "status": "CAPTURED",
+                  "amount": 31462
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or Cash App API error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "errors": [{ "category": "INVALID_REQUEST_ERROR", "code": "GRANT_NOT_FOUND", "detail": "The grant could not be found." }]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/payments/{id}/status": {
+      "get": {
+        "tags": ["Cash App Pay"],
+        "summary": "Get payment status",
+        "description": "Returns the status of a previously captured payment. In sandbox, always returns COMPLETED.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "PWC_2yam7aabfdpr0h422ge3snv26"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment status",
+            "content": {
+              "application/json": {
+                "example": { "payment_id": "PWC_2yam7aabfdpr0h422ge3snv26", "status": "COMPLETED" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup/onboard-merchant": {
+      "post": {
+        "tags": ["Onboarding"],
+        "summary": "Create brand and merchant on Cash App sandbox",
+        "description": "Two-step onboarding: creates a brand via POST /network/v1/brands, then a merchant under that brand via POST /network/v1/merchants. Returns combined IDs.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OnboardMerchantRequest" },
+              "example": { "brandName": "CommerceHub Demo", "merchantName": "Fiserv Test Store" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merchant onboarded",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OnboardMerchantResponse" },
+                "example": {
+                  "brandId": "BRAND_bbq9jbpebz4fg81pmnm9vqeac",
+                  "merchantId": "MMI_1nk0ecoa69ilax9gno1lz6luh",
+                  "scopeId": "BRAND_bbq9jbpebz4fg81pmnm9vqeac"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/card/tokenize": {
+      "post": {
+        "tags": ["Credit Card"],
+        "summary": "Tokenize a credit card",
+        "description": "Simulates CardFree CreditCardManager.addCreditCard(). Accepts card details, returns a token with detected card type (4→VISA, 5→MASTERCARD, 3→AMEX, 6→DISCOVER). 500ms simulated processing delay.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TokenizeCardRequest" },
+              "example": {
+                "cardNumber": "4242424242424242",
+                "expiryMonth": "12",
+                "expiryYear": "2027",
+                "cvv": "123",
+                "cardholderName": "Ajay Test",
+                "postalCode": "94107"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Card tokenized",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TokenizeCardResponse" },
+                "example": {
+                  "token": "tok_1775186317000_4242",
+                  "lastFour": "4242",
+                  "cardType": "VISA",
+                  "expiryMonth": "12",
+                  "expiryYear": "2027"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/card/payment": {
+      "post": {
+        "tags": ["Credit Card"],
+        "summary": "Process a card payment",
+        "description": "Simulates CardFree PaymentManager.sale(). Accepts a tokenized card and amount, returns a transaction. Amount $66.70 triggers a simulated decline (insufficient funds). 800ms processing delay.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CardPaymentRequest" },
+              "example": {
+                "amount": 43.38,
+                "token": "tok_1775186317000_4242",
+                "transactionType": "SALE",
+                "cardType": "VISA",
+                "lastFour": "4242"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment captured",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CardPaymentResponse" },
+                "example": {
+                  "transactionId": "TXN_CARD_1775186317144",
+                  "amount": 43.38,
+                  "status": "CAPTURED",
+                  "cardType": "VISA",
+                  "lastFour": "4242",
+                  "paymentMethod": "CREDIT_CARD"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Card declined",
+            "content": {
+              "application/json": {
+                "example": { "error": "DECLINED", "message": "Card declined - insufficient funds" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/googlepay/payment": {
+      "post": {
+        "tags": ["Google Pay"],
+        "summary": "Process a Google Pay payment",
+        "description": "Simulates CardFree GooglePay(walletToken) + PaymentManager.sale(). Accepts a wallet token and amount, returns a transaction. 600ms processing delay.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GooglePayRequest" },
+              "example": {
+                "amount": 1735.98,
+                "walletToken": "{\"type\":\"CARD\",\"info\":{\"cardNetwork\":\"VISA\",\"cardDetails\":\"4242\"}}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment captured",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CardPaymentResponse" },
+                "example": {
+                  "transactionId": "TXN_GPAY_1775186382134",
+                  "amount": 1735.98,
+                  "status": "CAPTURED",
+                  "cardType": "GOOGLE_PAY",
+                  "lastFour": "••••",
+                  "paymentMethod": "GOOGLE_PAY"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CashAppPaymentRequest": {
+        "type": "object",
+        "required": ["grantId", "amountCents", "idempotencyKey"],
+        "properties": {
+          "grantId": { "type": "string", "description": "Cash App grant ID. Use GRG_sandbox:active for sandbox testing." },
+          "amountCents": { "type": "integer", "format": "int64", "description": "Amount in cents (e.g., 31462 = $314.62)" },
+          "idempotencyKey": { "type": "string", "format": "uuid", "description": "Unique key to prevent duplicate captures" }
+        }
+      },
+      "CashAppPaymentResponse": {
+        "type": "object",
+        "properties": {
+          "paymentId": { "type": "string", "description": "Cash App payment ID (PWC_... prefix)" },
+          "status": { "type": "string", "enum": ["CAPTURED"], "description": "Payment status" },
+          "amount": { "type": "integer", "format": "int64", "description": "Captured amount in cents" }
+        }
+      },
+      "OnboardMerchantRequest": {
+        "type": "object",
+        "required": ["brandName", "merchantName"],
+        "properties": {
+          "brandName": { "type": "string" },
+          "merchantName": { "type": "string" }
+        }
+      },
+      "OnboardMerchantResponse": {
+        "type": "object",
+        "properties": {
+          "brandId": { "type": "string" },
+          "merchantId": { "type": "string" },
+          "scopeId": { "type": "string" }
+        }
+      },
+      "TokenizeCardRequest": {
+        "type": "object",
+        "required": ["cardNumber", "expiryMonth", "expiryYear", "cvv", "cardholderName"],
+        "properties": {
+          "cardNumber": { "type": "string", "description": "Full card number (e.g., 4242424242424242)" },
+          "expiryMonth": { "type": "string", "description": "2-digit month (e.g., 12)" },
+          "expiryYear": { "type": "string", "description": "4-digit year (e.g., 2027)" },
+          "cvv": { "type": "string", "description": "3 or 4 digit CVV" },
+          "cardholderName": { "type": "string" },
+          "postalCode": { "type": "string" }
+        }
+      },
+      "TokenizeCardResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "Tokenized card reference" },
+          "lastFour": { "type": "string" },
+          "cardType": { "type": "string", "enum": ["VISA", "MASTERCARD", "AMEX", "DISCOVER", "UNKNOWN"] },
+          "expiryMonth": { "type": "string" },
+          "expiryYear": { "type": "string" }
+        }
+      },
+      "CardPaymentRequest": {
+        "type": "object",
+        "required": ["amount", "token"],
+        "properties": {
+          "amount": { "type": "number", "format": "double", "description": "Amount in dollars (e.g., 43.38). Amount 66.70 triggers decline." },
+          "token": { "type": "string", "description": "Token from /api/card/tokenize" },
+          "transactionType": { "type": "string", "enum": ["SALE", "AUTH"], "default": "SALE" },
+          "cardType": { "type": "string" },
+          "lastFour": { "type": "string" }
+        }
+      },
+      "CardPaymentResponse": {
+        "type": "object",
+        "properties": {
+          "transactionId": { "type": "string", "description": "Transaction ID (TXN_CARD_... or TXN_GPAY_...)" },
+          "amount": { "type": "number", "format": "double" },
+          "status": { "type": "string", "enum": ["CAPTURED"] },
+          "cardType": { "type": "string" },
+          "lastFour": { "type": "string" },
+          "paymentMethod": { "type": "string", "enum": ["CREDIT_CARD", "GOOGLE_PAY"] }
+        }
+      },
+      "GooglePayRequest": {
+        "type": "object",
+        "required": ["amount", "walletToken"],
+        "properties": {
+          "amount": { "type": "number", "format": "double" },
+          "walletToken": { "type": "string", "description": "Google Pay PaymentData.toJson() string" }
+        }
+      }
+    }
+  }
+}

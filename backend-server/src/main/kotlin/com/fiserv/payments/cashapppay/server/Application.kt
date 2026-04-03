@@ -2,6 +2,7 @@ package com.fiserv.payments.cashapppay.server
 
 import com.fiserv.payments.cashapppay.server.client.CashAppSandboxClient
 import com.fiserv.payments.cashapppay.server.routes.onboardingRoutes
+import com.fiserv.payments.cashapppay.server.routes.cardPaymentRoutes
 import com.fiserv.payments.cashapppay.server.routes.paymentRoutes
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
@@ -46,5 +47,6 @@ fun Application.configureRoutes() {
         }
         onboardingRoutes(sandboxClient)
         paymentRoutes(sandboxClient)
+        cardPaymentRoutes()
     }
 }

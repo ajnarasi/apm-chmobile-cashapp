@@ -1392,6 +1392,196 @@ body {
   flex-shrink: 0;
 }
 
+/* ---- Card Entry Modal ---- */
+.card-entry-modal {
+  background: white;
+  border-radius: 20px;
+  width: 340px;
+  max-height: 90%;
+  overflow-y: auto;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+  animation: slideUp 0.3s ease;
+  margin: auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.card-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.card-modal-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: #1C1B1F;
+}
+
+.card-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+  padding: 0 4px;
+}
+
+.card-modal-body {
+  padding: 16px 20px;
+}
+
+.card-modal-footer {
+  padding: 12px 20px;
+  text-align: center;
+  font-size: 11px;
+  color: #999;
+  border-top: 1px solid #eee;
+}
+
+.card-field {
+  margin-bottom: 12px;
+}
+
+.card-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.card-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.card-field input:focus {
+  border-color: #FF6600;
+}
+
+.card-field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.card-field-row .card-field {
+  flex: 1;
+}
+
+.card-error {
+  color: #E53935;
+  font-size: 13px;
+  min-height: 18px;
+}
+
+/* ---- Google Pay Modal ---- */
+.gpay-modal {
+  background: white;
+  border-radius: 20px;
+  width: 320px;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+  animation: slideUp 0.3s ease;
+  margin: auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+}
+
+.gpay-header {
+  background: #f8f9fa;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+}
+
+.gpay-body {
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.gpay-amount {
+  font-size: 32px;
+  font-weight: 800;
+  color: #1C1B1F;
+  margin-bottom: 4px;
+}
+
+.gpay-merchant {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.gpay-card-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f8f9fa;
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.gpay-card-icon {
+  font-size: 28px;
+}
+
+.btn-gpay-confirm {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: #1a73e8;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.btn-gpay-confirm:active { opacity: 0.85; }
+
+.btn-gpay-cancel {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  background: none;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* ---- Swagger UI Container ---- */
+.swagger-layout {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  min-height: 600px;
+}
+
+.swagger-layout .swagger-ui .topbar { display: none; }
+.swagger-layout .swagger-ui .info { margin: 20px 0; }
+.swagger-layout .swagger-ui .scheme-container { display: none; }
+
 /* ============================================================
    Responsive — Original phone breakpoint
    ============================================================ */
