@@ -21,7 +21,7 @@
     { "name": "Credit Card", "description": "Simulated card tokenization and payment (mirrors CardFree CreditCardManager + PaymentManager)" },
     { "name": "Google Pay", "description": "Simulated Google Pay payment (mirrors CardFree GooglePay + PaymentManager)" },
     { "name": "Onboarding", "description": "Merchant setup via Cash App sandbox (brand + merchant creation)" },
-    { "name": "Klarna", "description": "Klarna payment session and authorization (Pay in 4, Pay Later, Pay Now)" }
+    { "name": "Klarna", "description": "Klarna via real sandbox API (api-na.playground.klarna.com). Session returns real JWT client_token. Supports Pay in 4, Pay Later, Pay Now." }
   ],
   "paths": {
     "/api/health": {

@@ -862,7 +862,7 @@ function renderDocArchitecture() {
     <section id="doc-architecture">
       <h2>Architecture Overview</h2>
       <p>
-        This project demonstrates Alternative Payment Method (APM) mobile SDK integration within a Fiserv CommerceHub + Cardfree ecosystem, supporting 4 payment methods: Cash App Pay, Klarna, Credit Card, and Google Pay.
+        This project demonstrates Alternative Payment Method (APM) mobile SDK integration within a Fiserv CommerceHub + Cardfree ecosystem, supporting 4 payment methods: Cash App Pay (real sandbox), Klarna (real sandbox), Credit Card (simulated), and Google Pay (simulated).
         It consists of six Gradle modules: a CardFree SDK shim that stubs the proprietary API surface,
         a Cash App Pay bridge that wraps the official Pay Kit SDK (core:2.6.0), a Ktor backend server
         that proxies authenticated requests to Cash App's sandbox API, an Android merchant demo app,
@@ -1161,6 +1161,39 @@ sequenceDiagram
   "paymentMethod": "GOOGLE_PAY"
 }</code></pre>
 
+<h3>Klarna SDK State Machine</h3>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> NotStarted
+    NotStarted --> WidgetLoading: startKlarnaPayment()
+    WidgetLoading --> SessionCreated: Backend returns client_token
+    SessionCreated --> WidgetLoaded: KlarnaPaymentBridge.createWebView()
+    WidgetLoaded --> Authorizing: Klarna.Payments.authorize()
+    Authorizing --> Authorized: User approves
+    Authorizing --> FinalizeRequired: Bank transfer needs finalize
+    FinalizeRequired --> Finalized: Klarna.Payments.finalize()
+    Authorized --> OrderCreated: Backend captures order
+    Finalized --> OrderCreated: Backend captures order
+    Authorizing --> Declined: User declines
+    Authorizing --> Error: SDK error
+    OrderCreated --> [*]
+    Declined --> NotStarted: reset()
+    Error --> NotStarted: reset()
+</pre>
+
+<h3>Klarna Android SDK Callback Mapping</h3>
+<table>
+<tr><th>KlarnaPaymentViewCallback</th><th>KlarnaFlowState</th><th>Action</th></tr>
+<tr><td>onInitialized(view)</td><td>&rarr; auto-call load()</td><td>Widget ready, load payment form</td></tr>
+<tr><td>onLoaded(view)</td><td>WidgetLoaded</td><td>Payment form rendered, ready for authorize</td></tr>
+<tr><td>onAuthorized(approved=true, authToken, finalizedRequired=false)</td><td>Authorized(authToken)</td><td>Send authToken to backend for order capture</td></tr>
+<tr><td>onAuthorized(approved=true, authToken, finalizedRequired=true)</td><td>FinalizeRequired(authToken)</td><td>Call finalize() for bank transfers</td></tr>
+<tr><td>onAuthorized(approved=false)</td><td>Declined</td><td>User rejected or Klarna unavailable</td></tr>
+<tr><td>onFinalized(approved=true, authToken)</td><td>Finalized(authToken)</td><td>Send authToken to backend</td></tr>
+<tr><td>onReauthorized(approved, authToken)</td><td>Authorized/Declined</td><td>After order amount changes</td></tr>
+<tr><td>onErrorOccurred(error)</td><td>Error(message)</td><td>SDK error, show to user</td></tr>
+</table>
+
 <h3>Klarna Endpoints</h3>
 
 <h4>POST /api/klarna/session</h4>
@@ -1409,10 +1442,30 @@ function renderDocTechSpecs() {
       <tr><td>Payment</td><td>PaymentManager.sale(Payment(amount, googlePay))</td><td>POST /api/googlepay/payment</td></tr>
       </table>
 
-      <h3>(d) Workflow Diagrams</h3>
+      <h3>(g) Klarna Android SDK Parameters</h3>
+      <h4>Required Parameters</h4>
+      <table>
+      <tr><th>Parameter</th><th>Type</th><th>Source</th><th>Description</th></tr>
+      <tr><td>clientToken</td><td>String (JWT)</td><td>POST /api/klarna/session</td><td>48-hour validity. Passed to Klarna.Payments.init() or KlarnaPaymentBridge</td></tr>
+      <tr><td>category</td><td>String</td><td>Session response</td><td>"klarna", "pay_over_time", "pay_later", "pay_now"</td></tr>
+      <tr><td>returnUrl</td><td>String</td><td>App config</td><td>Deep link: "merchantdemo://klarna/checkout"</td></tr>
+      <tr><td>amountCents</td><td>Long</td><td>Cart total</td><td>Order amount in minor units. Must match session amount.</td></tr>
+      <tr><td>authorizationToken</td><td>String</td><td>authorize() callback</td><td>60-minute validity. Sent to backend for order creation.</td></tr>
+      </table>
+      <h4>Optional Parameters</h4>
+      <table>
+      <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+      <tr><td>autoFinalize</td><td>Boolean</td><td>true</td><td>If false, authorize and finalize are separate (bank transfers)</td></tr>
+      <tr><td>sessionData</td><td>JSON String</td><td>null</td><td>Updated order data for load/authorize/finalize</td></tr>
+      <tr><td>locale</td><td>String</td><td>"en-US"</td><td>Klarna UI language</td></tr>
+      <tr><td>purchase_country</td><td>String</td><td>"US"</td><td>Buyer's country (affects payment method availability)</td></tr>
+      </table>
+
+      <h3>(h) Workflow Diagrams</h3>
       <p>
         Refer to the Architecture Overview section for the System Architecture Diagram and Payment Flow Sequence,
-        and the SDK Callbacks &amp; APIs section for the State Machine Diagram and API Proxy Flow.
+        the SDK Callbacks &amp; APIs section for the State Machine Diagrams (Cash App Pay + Klarna) and API Proxy Flow,
+        and the Klarna Integration section for the Android SDK Flow diagram.
       </p>
     </section>
   `;
@@ -1461,7 +1514,7 @@ function renderDocTesting() {
         <tr><td>Google Pay happy path</td><td>Web demo: GPay dialog → confirm → payment</td><td>TXN_GPAY_1775186382134 — Google Pay, $1,735.98</td></tr>
         <tr><td>Card decline ($66.70)</td><td>Backend: POST /api/card/payment with amount=66.70</td><td>400 — "insufficient funds"</td></tr>
         <tr><td>Card type detection</td><td>Tokenize with leading digit 4/5/3/6</td><td>VISA/MASTERCARD/AMEX/DISCOVER</td></tr>
-<tr><td>Klarna Pay in 4</td><td>Web demo: Klarna modal → Pay in 4 → confirm</td><td>TXN_KLARNA_1775194282022 — Klarna, $271.23</td></tr>
+<tr><td>Klarna Pay in 4 (real SDK)</td><td>Web demo: real Klarna.Payments.authorize() dialog</td><td>Real "Welcome to Klarna" authorization UI renders via Payments SDK</td></tr>
 <tr><td>Klarna real session</td><td>POST /api/klarna/session</td><td>Real session_id + JWT client_token from Klarna sandbox</td></tr>
 <tr><td>Klarna promo widget</td><td>Catalog product cards</td><td>Official klarna-placement badges rendering</td></tr>
       </table>
@@ -1620,47 +1673,79 @@ sequenceDiagram
 }</code></pre>
 
 <h3>Android Mobile SDK Integration</h3>
-<p>The Android integration uses <code>com.klarna.mobile:sdk:2.11.1</code> from <code>x.klarnacdn.net/mobile-sdk/</code>.</p>
+<p>The Android integration uses <code>com.klarna.mobile:sdk:2.11.1</code> from <code>x.klarnacdn.net/mobile-sdk/</code>. Klarna is fully wired into <code>CheckoutScreen.kt</code> alongside Cash App Pay with a payment type selector and real-time status indicators.</p>
 
-<h4>Architecture (Bridge Pattern)</h4>
+<h4>Architecture (Bridge Pattern &mdash; mirrors CashAppPayAuthorizer)</h4>
 <table>
 <tr><th>Component</th><th>Class</th><th>Purpose</th></tr>
-<tr><td>State Machine</td><td><code>KlarnaFlowState</code></td><td>11 sealed states (NotStarted → OrderCreated)</td></tr>
-<tr><td>SDK Bridge</td><td><code>KlarnaPaymentBridge</code></td><td>Wraps KlarnaStandaloneWebView, hosts Klarna JS widget in WebView</td></tr>
-<tr><td>Orchestrator</td><td><code>KlarnaViewModel</code></td><td>Session creation → bridge init → capture via backend</td></tr>
+<tr><td>State Machine</td><td><code>KlarnaFlowState</code></td><td>11 sealed states: NotStarted &rarr; SessionCreated &rarr; WidgetLoaded &rarr; Authorized &rarr; OrderCreated</td></tr>
+<tr><td>SDK Bridge</td><td><code>KlarnaPaymentBridge</code></td><td>Wraps <code>KlarnaStandaloneWebView</code>, hosts Klarna JS widget in native WebView</td></tr>
+<tr><td>Orchestrator</td><td><code>KlarnaViewModel</code></td><td>Session creation &rarr; bridge init &rarr; state collection &rarr; backend capture</td></tr>
+<tr><td>UI</td><td><code>CheckoutScreen.kt</code></td><td>Klarna card with radio selector + pay button + status chips (Compose)</td></tr>
+<tr><td>Deep Link</td><td><code>AndroidManifest.xml</code></td><td>Return URL: <code>merchantdemo://klarna/checkout</code></td></tr>
 </table>
 
-<h4>SDK Flow (Android)</h4>
+<h4>CheckoutScreen Integration</h4>
+<p>The Klarna payment card in <code>CheckoutScreen.kt</code> provides:</p>
+<ul>
+<li>Payment type radio selector: "Pay with Klarna" / "Pay in 4 installments" / "Pay in 30 days"</li>
+<li>"Pay with Klarna" button triggers <code>klarnaViewModel.startKlarnaPayment(totalDollars, selectedType)</code></li>
+<li>Status chips: "Creating Klarna session..." &rarr; "Klarna session ready" &rarr; "Authorizing..."</li>
+<li>Error/declined states with <code>AnimatedVisibility</code></li>
+<li><code>LaunchedEffect</code> watches <code>KlarnaFlowState.OrderCreated</code> &rarr; navigates to confirmation</li>
+</ul>
+
+<h4>SDK Flow (Android Native)</h4>
 <pre class="mermaid">
 sequenceDiagram
-    participant App as Merchant App
+    participant UI as CheckoutScreen
     participant VM as KlarnaViewModel
     participant Bridge as KlarnaPaymentBridge
     participant WV as KlarnaStandaloneWebView
-    participant BE as Backend
-    participant K as Klarna API
+    participant BE as Backend :8080
+    participant K as Klarna Sandbox API
 
-    App->>VM: createSession(amountCents)
+    UI->>VM: startKlarnaPayment($12.50, "klarna")
+    VM->>VM: amountCents = 1250
     VM->>BE: POST /api/klarna/session
     BE->>K: POST /payments/v1/sessions
-    K-->>BE: {client_token, session_id}
+    K-->>BE: {client_token (JWT), session_id}
     BE-->>VM: SessionCreated state
     VM->>Bridge: createWebView(clientToken, category)
-    Bridge->>WV: loadData(html with Klarna JS)
-    Note over WV: Klarna.Payments.init + load + authorize
-    WV-->>Bridge: Authorization token
-    Bridge-->>VM: Authorized state
+    Bridge->>WV: loadData(HTML with Klarna JS)
+    Note over WV: Klarna.Payments.init(client_token)
+    Note over WV: Klarna.Payments.load(container, category)
+    Note over WV: Klarna.Payments.authorize()
+    WV-->>Bridge: authorizationToken
+    Bridge-->>VM: Authorized(authToken) state
     VM->>BE: POST /api/klarna/payment
     BE->>K: POST /authorizations/{token}/order
-    K-->>BE: {order_id}
+    K-->>BE: {order_id, fraud_status}
     BE-->>VM: OrderCreated state
-    VM-->>App: Show confirmation
+    VM-->>UI: Navigate to confirmation
 </pre>
 
-<p><strong>Klarna SDK v2.11.1 note:</strong> The <code>KlarnaPaymentView</code> from older documentation has been replaced with <code>KlarnaStandaloneWebView</code>. Our bridge loads the Klarna Payments JS widget inside the WebView, following the same init() → load() → authorize() flow as the web SDK.</p>
+<p><strong>Klarna SDK v2.11.1 note:</strong> The <code>KlarnaPaymentView</code> with native callbacks from older docs has been replaced with <code>KlarnaStandaloneWebView</code>. Our bridge loads the Klarna Payments JS widget inside the WebView, following the same init() &rarr; load() &rarr; authorize() flow. The <code>KlarnaPaymentViewCallback</code> interface (onInitialized, onLoaded, onAuthorized, onFinalized, onErrorOccurred) maps to <code>KlarnaFlowState</code> sealed class states.</p>
+
+<h4>Deep Link Configuration</h4>
+<pre><code>&lt;!-- AndroidManifest.xml --&gt;
+&lt;intent-filter&gt;
+    &lt;action android:name="android.intent.action.VIEW" /&gt;
+    &lt;category android:name="android.intent.category.DEFAULT" /&gt;
+    &lt;category android:name="android.intent.category.BROWSABLE" /&gt;
+    &lt;data android:scheme="merchantdemo"
+          android:host="klarna"
+          android:pathPrefix="/checkout" /&gt;
+&lt;/intent-filter&gt;</code></pre>
 
     <h3>Promo Messaging</h3>
-    <p>Product cards use the official <code>&lt;klarna-placement&gt;</code> web component from Klarna Web SDK v1. The widget is initialized via the Klarna JS script with <code>data-environment="playground"</code> and the test client ID. Each product card passes <code>data-purchase-amount</code> in minor units (cents) matching the product price.</p>
+    <p><strong>Product cards:</strong> Text-based promo: "or 4 x $62.50 with <strong>Klarna</strong>" calculated per product price.</p>
+    <p><strong>Checkout page:</strong> Official <code>&lt;klarna-placement data-key="credit-promotion-auto-size"&gt;</code> web component from Klarna Web SDK v1, showing real Klarna messaging ("From $46/month or 4 payments at 0%").</p>
+    <p><strong>Two Klarna JS SDKs:</strong></p>
+    <ul>
+    <li><code>js.klarna.com/web-sdk/v1/klarna.js</code> &mdash; On-Site Messaging / promo placement widgets</li>
+    <li><code>x.klarnacdn.net/kp/lib/v1/api.js</code> &mdash; Klarna.Payments checkout SDK (init/load/authorize)</li>
+    </ul>
     </section>
   `;
 }
@@ -1719,6 +1804,23 @@ export CASHAPP_API_KEY=KEY_your_api_key_id
   -d '{"idempotency_key":"create-key-001","api_key":{"scopes":["PAYMENTS_WRITE","BRANDS_WRITE","MERCHANTS_WRITE"],"reference_id":"my-key"}}'</code></pre>
       <h4>Magic Test Values</h4>
       <p>Use <code>GRG_sandbox:active</code> as grant ID for successful payments. See Documentation tab for full list of magic values.</p>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">4b</span>Klarna Setup</h3>
+      <p>Klarna sandbox credentials are pre-configured. The backend calls <code>api-na.playground.klarna.com</code> with HTTP Basic auth.</p>
+      <table>
+        <tr><th>Credential</th><th>Env Variable</th><th>Default</th></tr>
+        <tr><td>API Username</td><td>KLARNA_USERNAME</td><td>eb9570bf-163e-...</td></tr>
+        <tr><td>API Password</td><td>KLARNA_PASSWORD</td><td>klarna_test_api_...</td></tr>
+      </table>
+      <p>The web demo loads two Klarna JS SDKs:</p>
+      <pre><code>&lt;!-- On-Site Messaging (promo widgets) --&gt;
+&lt;script src="https://js.klarna.com/web-sdk/v1/klarna.js" data-environment="playground"&gt;&lt;/script&gt;
+
+&lt;!-- Klarna Payments (checkout SDK) --&gt;
+&lt;script src="https://x.klarnacdn.net/kp/lib/v1/api.js"&gt;&lt;/script&gt;</code></pre>
+      <p><strong>Test:</strong> At checkout, click "Klarna" &rarr; real "Welcome to Klarna" dialog should appear with phone verification.</p>
     </div>
 
     <div class="step-card">
