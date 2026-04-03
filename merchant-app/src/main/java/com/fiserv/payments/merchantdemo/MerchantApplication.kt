@@ -16,12 +16,12 @@ class MerchantApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize Fiserv Mobile Payments SDK (shim)
+        // Initialize Fiserv Mobile Payments SDK
         MobilePayments.initialize(
             application = this,
             environment = Environment.SANDBOX,
-            clientToken = "FISERV_SANDBOX_TOKEN",
-            businessLocationId = "DEMO_LOCATION_001",
+            clientToken = "ec4b3f05035f4ab594ea14471885908d",
+            businessLocationId = "10000001",
         )
 
         // Cash App Pay — real sandbox credentials

@@ -49,7 +49,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.mobile.payments)
+    implementation(files("../dist/1.0.10/fiserv-mobile-payments-android-v1.0.10.aar"))
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.compose.pay.button)
