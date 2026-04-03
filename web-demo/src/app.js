@@ -162,7 +162,7 @@ function renderCatalog() {
                 <span class="product-price">${formatCents(p.priceInCents)}</span>
                 <button class="btn-add" data-add="${p.id}">Add</button>
               </div>
-              <div class="klarna-promo-container"><klarna-placement data-key="credit-promotion-badge" data-locale="en-US" data-purchase-amount="${p.priceInCents}"></klarna-placement></div>
+              <div class="klarna-promo">or 4 x ${formatCents(Math.ceil(p.priceInCents / 4))} with <strong>Klarna</strong></div>
             </div>
           </div>`;
         }).join('')}
@@ -260,7 +260,11 @@ function renderCheckout() {
         <button class="btn-outline" data-pay-gpay style="margin-top: 8px;">G Pay &nbsp;Google Pay</button>
         <button class="btn-outline btn-klarna-accent" data-pay-klarna style="margin-top: 8px;">\uD83D\uDECD\uFE0F &nbsp;Klarna \u00B7 Pay in 4 / Pay Later</button>
 
-        <div class="checkout-footer">All payment methods powered by Fiserv CommerceHub</div>
+        <div class="klarna-checkout-promo">
+          <klarna-placement data-key="credit-promotion-auto-size" data-locale="en-US" data-purchase-amount="${totalCents()}"></klarna-placement>
+        </div>
+
+        <div class="checkout-footer">All payment methods powered by Fiserv CommerceHub + Cardfree</div>
       </div>
     </div>`;
 }
@@ -855,7 +859,7 @@ function renderDocArchitecture() {
     <section id="doc-architecture">
       <h2>Architecture Overview</h2>
       <p>
-        This project demonstrates Cash App Pay integration within a Fiserv CommerceHub ecosystem.
+        This project demonstrates Alternative Payment Method (APM) mobile SDK integration within a Fiserv CommerceHub + Cardfree ecosystem, supporting 4 payment methods: Cash App Pay, Klarna, Credit Card, and Google Pay.
         It consists of six Gradle modules: a CardFree SDK shim that stubs the proprietary API surface,
         a Cash App Pay bridge that wraps the official Pay Kit SDK (core:2.6.0), a Ktor backend server
         that proxies authenticated requests to Cash App's sandbox API, an Android merchant demo app,
@@ -899,7 +903,7 @@ flowchart TD
         <tr><td>:payment-sdk-shim</td><td>Android Library (Kotlin)</td><td>22</td><td>Stub CardFree SDK API surface &mdash; zero external credentials</td></tr>
         <tr><td>:cashapppay-bridge</td><td>Android Library (Kotlin)</td><td>9</td><td>Wraps Cash App Pay Kit SDK + backend capture client</td></tr>
         <tr><td>:backend-server</td><td>Kotlin JVM (Ktor)</td><td>6</td><td>Proxies to Cash App sandbox + Klarna sandbox APIs</td></tr>
-        <tr><td>:merchant-app</td><td>Android App (Compose)</td><td>24</td><td>Standalone merchant demo with 3 payment methods</td></tr>
+        <tr><td>:merchant-app</td><td>Android App (Compose)</td><td>24</td><td>Standalone merchant demo with 4 payment methods (Cash App Pay, Klarna, Card, Google Pay)</td></tr>
         <tr><td>:web-demo</td><td>Vanilla JS (Vite)</td><td>5</td><td>Browser-based demo with phone mockup + trace panel</td></tr>
         <tr><td>:app</td><td>Android App (original)</td><td>&mdash;</td><td>Original CardFree sample (unchanged)</td></tr>
       </table>
