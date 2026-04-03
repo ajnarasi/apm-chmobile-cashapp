@@ -1891,8 +1891,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const navLink = e.target.closest('.docs-nav-link');
     if (navLink) {
       e.preventDefault();
-      const target = document.getElementById(navLink.dataset.section);
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      e.stopPropagation();
+      const sectionId = navLink.dataset.section;
+      const target = document.getElementById(sectionId);
+      if (target) {
+        // Use instant scroll then smooth offset adjustment for reliability
+        target.scrollIntoView({ block: 'start' });
+        // Slight offset for the sticky header
+        window.scrollBy(0, -10);
+      }
       document.querySelectorAll('.docs-nav-link').forEach(l => l.classList.remove('active'));
       navLink.classList.add('active');
     }
