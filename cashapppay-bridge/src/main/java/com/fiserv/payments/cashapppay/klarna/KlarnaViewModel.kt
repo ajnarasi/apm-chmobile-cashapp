@@ -36,6 +36,7 @@ class KlarnaViewModel(application: Application) : AndroidViewModel(application) 
 
     private var bridge: KlarnaPaymentBridge? = null
     private var infraConfig: CashAppPayInfraConfig? = null
+    private var currentAmountCents: Long = 0
     private val httpClient = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -49,6 +50,7 @@ class KlarnaViewModel(application: Application) : AndroidViewModel(application) 
     fun createSession(amountCents: Long, category: String = "klarna") {
         viewModelScope.launch {
             _flowState.value = KlarnaFlowState.WidgetLoading
+            currentAmountCents = amountCents
             try {
                 val baseUrl = infraConfig?.backendBaseUrl ?: "http://10.0.2.2:8080"
                 val body = """{"amountCents":$amountCents,"locale":"en-US","paymentMethodCategory":"$category"}"""
@@ -109,7 +111,7 @@ class KlarnaViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val baseUrl = infraConfig?.backendBaseUrl ?: "http://10.0.2.2:8080"
                 val sessionState = _flowState.value
-                val amountCents = 0L // Will be set from UI
+                val amountCents = currentAmountCents
                 val body = """{"amountCents":$amountCents,"authorizationToken":"$authToken","paymentMethodCategory":"$category"}"""
                 val request = Request.Builder()
                     .url("$baseUrl/api/klarna/payment")
@@ -135,6 +137,15 @@ class KlarnaViewModel(application: Application) : AndroidViewModel(application) 
     fun reset() {
         bridge?.reset()
         _flowState.value = KlarnaFlowState.NotStarted
+    }
+
+    /**
+     * Convenience method matching CashAppPayViewModel.startCashAppPayment() pattern.
+     * Converts dollars to cents and kicks off session creation.
+     */
+    fun startKlarnaPayment(amountDollars: Double, category: String = "klarna") {
+        val amountCents = (amountDollars * 100).toLong()
+        createSession(amountCents, category)
     }
 
     override fun onCleared() {
