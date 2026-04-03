@@ -699,8 +699,11 @@ async function confirmKlarna() {
     const session = await sessionRes.json();
     logEvent('sdk', 'Klarna session created (real sandbox)', { sessionId: session.sessionId, categories: session.paymentMethodCategories });
 
-    // Step 2: Initialize Klarna JS SDK with real client_token
+    // Step 2: Initialize Klarna Payments JS SDK with real client_token
+    // Wait briefly for async Klarna Payments SDK to load
     let authToken = null;
+    const klarnaReady = typeof Klarna !== 'undefined' && Klarna.Payments;
+    if (!klarnaReady) { await sleep(1500); } // Give SDK time to load
     if (typeof Klarna !== 'undefined' && Klarna.Payments) {
       logEvent('sdk', 'Klarna.Payments.init({ client_token })', { tokenLength: session.clientToken.length });
       try {
@@ -749,7 +752,7 @@ async function confirmKlarna() {
         authToken = 'klarna_auth_' + Date.now();
       }
     } else {
-      logEvent('sdk', 'Klarna JS SDK not loaded - using simulated auth');
+      logEvent('sdk', 'Klarna Payments SDK (x.klarnacdn.net/kp/lib/v1/api.js) not available - using simulated auth');
       authToken = 'klarna_auth_' + Date.now();
     }
 
