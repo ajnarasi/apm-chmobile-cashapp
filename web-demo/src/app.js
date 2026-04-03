@@ -1,5 +1,5 @@
 // ============================================================
-// CommerceHub Web Demo — Cash App Pay Integration
+// CommerceHub + Cardfree — APM Mobile SDK
 // Vanilla JS SPA with phone frame mockup
 // ============================================================
 
@@ -143,8 +143,8 @@ function renderCatalog() {
   return `
     <div class="screen-enter">
       <div class="hero-banner">
-        <div class="hero-title">CommerceHub</div>
-        <div class="hero-subtitle">Powered by Fiserv \u00B7 Cash App Pay Enabled</div>
+        <div class="hero-title">CommerceHub + Cardfree</div>
+        <div class="hero-subtitle">APM Mobile SDK \u00B7 Cash App Pay \u00B7 Klarna \u00B7 Cards \u00B7 Google Pay</div>
       </div>
       <div class="category-bar">
         ${CATEGORIES.map(c => `<button class="chip ${state.selectedCategory === c ? 'active' : ''}" data-category="${c}">${c}</button>`).join('')}
@@ -162,7 +162,7 @@ function renderCatalog() {
                 <span class="product-price">${formatCents(p.priceInCents)}</span>
                 <button class="btn-add" data-add="${p.id}">Add</button>
               </div>
-              <klarna-placement data-key="top-strip-promotion-badge" data-locale="en-US" data-purchase-amount="${p.priceInCents}"></klarna-placement>
+              <div class="klarna-promo-container"><klarna-placement data-key="credit-promotion-badge" data-locale="en-US" data-purchase-amount="${p.priceInCents}"></klarna-placement></div>
             </div>
           </div>`;
         }).join('')}
@@ -885,6 +885,10 @@ flowchart TD
     style BRIDGE fill:#1565C0,color:#fff
     style PAYKIT fill:#00D632,color:#fff
     style BS fill:#7B1FA2,color:#fff
+    KLARNA["Klarna Sandbox API<br/>api-na.playground.klarna.com"]
+    BS -->|"Klarna Basic Auth"| KLARNA
+
+    style KLARNA fill:#FFB3C7,color:#000
     style CASHAPI fill:#00A825,color:#fff
     style SHIM fill:#757575,color:#fff
       </pre>
@@ -894,7 +898,7 @@ flowchart TD
         <tr><th>Module</th><th>Technology</th><th>Files</th><th>Purpose</th></tr>
         <tr><td>:payment-sdk-shim</td><td>Android Library (Kotlin)</td><td>22</td><td>Stub CardFree SDK API surface &mdash; zero external credentials</td></tr>
         <tr><td>:cashapppay-bridge</td><td>Android Library (Kotlin)</td><td>9</td><td>Wraps Cash App Pay Kit SDK + backend capture client</td></tr>
-        <tr><td>:backend-server</td><td>Kotlin JVM (Ktor)</td><td>6</td><td>Proxies to Cash App sandbox API with auth headers</td></tr>
+        <tr><td>:backend-server</td><td>Kotlin JVM (Ktor)</td><td>6</td><td>Proxies to Cash App sandbox + Klarna sandbox APIs</td></tr>
         <tr><td>:merchant-app</td><td>Android App (Compose)</td><td>24</td><td>Standalone merchant demo with 3 payment methods</td></tr>
         <tr><td>:web-demo</td><td>Vanilla JS (Vite)</td><td>5</td><td>Browser-based demo with phone mockup + trace panel</td></tr>
         <tr><td>:app</td><td>Android App (original)</td><td>&mdash;</td><td>Original CardFree sample (unchanged)</td></tr>
@@ -1017,6 +1021,29 @@ sequenceDiagram
     U->>U: Confirmation screen
 </pre>
 
+<h3>Klarna Payment Flow</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant UI as Klarna Modal
+    participant BE as Backend :8080
+    participant K as Klarna Sandbox
+
+    U->>UI: Select Klarna + payment type
+    UI->>BE: POST /api/klarna/session
+    BE->>K: POST /payments/v1/sessions
+    K-->>BE: {session_id, client_token, categories}
+    BE-->>UI: {sessionId, clientToken}
+    UI->>UI: Klarna.Payments.init(client_token)
+    UI->>UI: Klarna.Payments.load(container)
+    UI->>UI: Klarna.Payments.authorize()
+    UI->>BE: POST /api/klarna/payment
+    BE->>K: POST /authorizations/{token}/order
+    K-->>BE: {order_id, fraud_status}
+    BE-->>UI: {transactionId, orderId, status}
+    UI->>U: Confirmation screen
+</pre>
+
       <h3>Backend API Endpoints</h3>
 
       <h4>POST /api/payments/initiate</h4>
@@ -1125,6 +1152,42 @@ sequenceDiagram
   "cardType": "GOOGLE_PAY",
   "lastFour": "••••",
   "paymentMethod": "GOOGLE_PAY"
+}</code></pre>
+
+<h3>Klarna Endpoints</h3>
+
+<h4>POST /api/klarna/session</h4>
+<p>Creates a Klarna payment session via the real Klarna sandbox API (<code>api-na.playground.klarna.com/payments/v1/sessions</code>). Returns a JWT client_token for SDK initialization.</p>
+<strong>Request:</strong>
+<pre><code>{
+  "amountCents": 24999,
+  "locale": "en-US",
+  "productName": "AirPods Pro",
+  "paymentMethodCategory": "pay_over_time"
+}</code></pre>
+<strong>Response (200):</strong>
+<pre><code>{
+  "sessionId": "61b6c087-504f-6e6e-9382-4de4867ea9a8",
+  "clientToken": "eyJhbGciOiJSUzI1NiIs...",
+  "paymentMethodCategories": ["klarna"]
+}</code></pre>
+
+<h4>POST /api/klarna/payment</h4>
+<p>Creates a Klarna order from an authorization token via <code>api-na.playground.klarna.com/payments/v1/authorizations/{token}/order</code>.</p>
+<strong>Request:</strong>
+<pre><code>{
+  "amountCents": 24999,
+  "authorizationToken": "klarna_auth_...",
+  "paymentMethodCategory": "pay_over_time"
+}</code></pre>
+<strong>Response (200):</strong>
+<pre><code>{
+  "transactionId": "TXN_KLARNA_1775194282022",
+  "orderId": "KL_ORD_1775194282022",
+  "amount": 24999,
+  "status": "AUTHORIZED",
+  "paymentMethod": "KLARNA",
+  "paymentType": "Pay in 4 installments"
 }</code></pre>
 
       <h3>Cash App Sandbox API (Upstream)</h3>
@@ -1282,6 +1345,9 @@ function renderDocTechSpecs() {
         <tr><td>Brand ID</td><td><code>BRAND_bbq9jbpebz4fg81pmnm9vqeac</code></td><td>CommerceHub Demo brand</td></tr>
         <tr><td>Merchant ID</td><td><code>MMI_1nk0ecoa69ilax9gno1lz6luh</code></td><td>Fiserv Demo Store</td></tr>
         <tr><td>Redirect URI</td><td><code>merchantdemo://cashapppay/checkout</code></td><td>Deep link for Cash App return</td></tr>
+<tr><td>Klarna API Username</td><td><code>eb9570bf-163e-487e-b8c6-f84a188c10a1</code></td><td>Klarna sandbox API auth</td></tr>
+<tr><td>Klarna Client ID</td><td><code>klarna_test_client_QjNr...</code></td><td>Klarna JS SDK / promo widget</td></tr>
+<tr><td>Klarna Merchant</td><td><code>PN129867</code></td><td>Klarna merchant account</td></tr>
       </table>
 
       <h3>(c) Sandbox Information</h3>
@@ -1388,6 +1454,9 @@ function renderDocTesting() {
         <tr><td>Google Pay happy path</td><td>Web demo: GPay dialog → confirm → payment</td><td>TXN_GPAY_1775186382134 — Google Pay, $1,735.98</td></tr>
         <tr><td>Card decline ($66.70)</td><td>Backend: POST /api/card/payment with amount=66.70</td><td>400 — "insufficient funds"</td></tr>
         <tr><td>Card type detection</td><td>Tokenize with leading digit 4/5/3/6</td><td>VISA/MASTERCARD/AMEX/DISCOVER</td></tr>
+<tr><td>Klarna Pay in 4</td><td>Web demo: Klarna modal → Pay in 4 → confirm</td><td>TXN_KLARNA_1775194282022 — Klarna, $271.23</td></tr>
+<tr><td>Klarna real session</td><td>POST /api/klarna/session</td><td>Real session_id + JWT client_token from Klarna sandbox</td></tr>
+<tr><td>Klarna promo widget</td><td>Catalog product cards</td><td>Official klarna-placement badges rendering</td></tr>
       </table>
     </section>
   `;
@@ -1419,6 +1488,8 @@ function renderDocAnalysis() {
         <tr><td>CreditCardListView</td><td>Card management UI</td><td>Not included</td><td>Missing</td></tr>
         <tr><td>StyleProvider</td><td>Runtime theme switching</td><td>No-op applyStyle()</td><td>Stub</td></tr>
         <tr><td>GooglePay</td><td>PaymentMethod impl</td><td>Stub data class</td><td>Stub</td></tr>
+<tr><td>Klarna (Mobile SDK)</td><td>KlarnaStandaloneWebView + KlarnaPaymentView</td><td>KlarnaPaymentBridge + KlarnaViewModel</td><td>Bridge</td></tr>
+<tr><td>Klarna (Promo)</td><td>KlarnaOSMView</td><td>klarna-placement web component</td><td>Official widget</td></tr>
       </table>
 
       <h3>(b) Bridge vs CardFree Integration Pattern</h3>
@@ -1541,8 +1612,48 @@ sequenceDiagram
   "paymentType": "Pay in 4 installments"
 }</code></pre>
 
+<h3>Android Mobile SDK Integration</h3>
+<p>The Android integration uses <code>com.klarna.mobile:sdk:2.11.1</code> from <code>x.klarnacdn.net/mobile-sdk/</code>.</p>
+
+<h4>Architecture (Bridge Pattern)</h4>
+<table>
+<tr><th>Component</th><th>Class</th><th>Purpose</th></tr>
+<tr><td>State Machine</td><td><code>KlarnaFlowState</code></td><td>11 sealed states (NotStarted → OrderCreated)</td></tr>
+<tr><td>SDK Bridge</td><td><code>KlarnaPaymentBridge</code></td><td>Wraps KlarnaStandaloneWebView, hosts Klarna JS widget in WebView</td></tr>
+<tr><td>Orchestrator</td><td><code>KlarnaViewModel</code></td><td>Session creation → bridge init → capture via backend</td></tr>
+</table>
+
+<h4>SDK Flow (Android)</h4>
+<pre class="mermaid">
+sequenceDiagram
+    participant App as Merchant App
+    participant VM as KlarnaViewModel
+    participant Bridge as KlarnaPaymentBridge
+    participant WV as KlarnaStandaloneWebView
+    participant BE as Backend
+    participant K as Klarna API
+
+    App->>VM: createSession(amountCents)
+    VM->>BE: POST /api/klarna/session
+    BE->>K: POST /payments/v1/sessions
+    K-->>BE: {client_token, session_id}
+    BE-->>VM: SessionCreated state
+    VM->>Bridge: createWebView(clientToken, category)
+    Bridge->>WV: loadData(html with Klarna JS)
+    Note over WV: Klarna.Payments.init + load + authorize
+    WV-->>Bridge: Authorization token
+    Bridge-->>VM: Authorized state
+    VM->>BE: POST /api/klarna/payment
+    BE->>K: POST /authorizations/{token}/order
+    K-->>BE: {order_id}
+    BE-->>VM: OrderCreated state
+    VM-->>App: Show confirmation
+</pre>
+
+<p><strong>Klarna SDK v2.11.1 note:</strong> The <code>KlarnaPaymentView</code> from older documentation has been replaced with <code>KlarnaStandaloneWebView</code>. Our bridge loads the Klarna Payments JS widget inside the WebView, following the same init() → load() → authorize() flow as the web SDK.</p>
+
     <h3>Promo Messaging</h3>
-    <p>Product cards in the catalog display Klarna installment messaging: "or 4 x $62.50 with <strong>Klarna</strong>". This is calculated as <code>Math.ceil(priceInCents / 4)</code> and formatted as currency.</p>
+    <p>Product cards use the official <code>&lt;klarna-placement&gt;</code> web component from Klarna Web SDK v1. The widget is initialized via the Klarna JS script with <code>data-environment="playground"</code> and the test client ID. Each product card passes <code>data-purchase-amount</code> in minor units (cents) matching the product price.</p>
     </section>
   `;
 }

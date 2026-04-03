@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "CommerceHub Cash App Pay Integration API",
-    "description": "Backend API for the CommerceHub Cash App Pay integration demo. Supports 3 payment methods: Cash App Pay (real sandbox), Credit Card (simulated), and Google Pay (simulated). Cash App Pay endpoints proxy to sandbox.api.cash.app with real credentials.",
+    "title": "CommerceHub + Cardfree - APM Mobile SDK API",
+    "description": "Backend API for the CommerceHub + Cardfree APM Mobile SDK. Supports 4 payment methods: Cash App Pay (real sandbox), Klarna (real sandbox), Credit Card (simulated), and Google Pay (simulated). Cash App Pay proxies to sandbox.api.cash.app. Klarna proxies to api-na.playground.klarna.com.",
     "version": "1.0.0",
     "contact": {
       "name": "Fiserv CommerceHub",

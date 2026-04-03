@@ -1701,6 +1701,20 @@ body {
   color: #0A0B09;
 }
 
+/* Klarna official placement widget container */
+.klarna-promo-container {
+  margin-top: 4px;
+  overflow: hidden;
+  max-height: 24px;
+  transform: scale(0.7);
+  transform-origin: left top;
+  width: 143%;
+}
+
+.klarna-promo-container klarna-placement {
+  display: block;
+}
+
 /* ============================================================
    Responsive — Original phone breakpoint
    ============================================================ */
