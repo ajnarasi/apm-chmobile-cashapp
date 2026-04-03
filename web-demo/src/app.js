@@ -698,11 +698,11 @@ async function confirmKlarna() {
     const authToken = 'klarna_auth_' + Date.now();
     logEvent('sdk', 'Klarna.Payments.authorize() -> approved', { authorizationToken: authToken });
 
-    logEvent('api', 'POST /api/klarna/payment', { amount: totalDollars(), authorizationToken: authToken, paymentMethodCategory: selectedType });
+    logEvent('api', 'POST /api/klarna/payment', { amountCents: totalCents(), authorizationToken: authToken, paymentMethodCategory: selectedType });
     const payRes = await fetch('/api/klarna/payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: totalDollars(), authorizationToken: authToken, paymentMethodCategory: selectedType })
+      body: JSON.stringify({ amountCents: totalCents(), authorizationToken: authToken, paymentMethodCategory: selectedType })
     });
 
     if (!payRes.ok) throw new Error('Klarna payment failed');
