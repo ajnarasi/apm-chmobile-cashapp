@@ -17,6 +17,7 @@ local.properties
 # Node
 node_modules/
 web-demo/node_modules/
+web-demo/dist/
 
 # Build outputs
 */build/
